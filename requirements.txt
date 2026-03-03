@@ -1,0 +1,6 @@
+discord.py
+supabase
+Pillow
+requests
+aiohttp
+python-dotenv
