@@ -523,7 +523,7 @@ async def help_cmd(interaction: discord.Interaction):
     """
     embed.add_field(name="⚽ Gestión y Partidos", value=equipo_cmds, inline=False)
     
-    admin_cmds = "`/addplayer`, `/editplayer`, `/delplayer`, `/bulkadd`, `/addmoney`, `/removemoney`, `/lock`, `/unlock`, `/claimall`"
+    admin_cmds = "`/addplayer`, `/editplayer`, `/delplayer`, `/bulkadd`, `/addmoney`, `/removemoney`, `/lock`, `/unlock`"
     embed.add_field(name="⚙️ Comandos de Admin", value=admin_cmds, inline=False)
     
     embed.set_footer(text="SSA Guru - Street Soccer All One", icon_url=interaction.user.display_avatar.url)
@@ -686,30 +686,6 @@ async def claim(interaction: discord.Interaction):
     
     view = ClaimView(interaction.user, obtenido, precio)
     await interaction.followup.send("¿Qué deseas hacer con este jugador?", embed=embed, view=view)
-
-@bot.tree.command(name="claimall", description="[TESTE] Añade TODOS los jugadores del mercado a tu club.")
-@is_not_locked()
-async def claimall(interaction: discord.Interaction):
-    await interaction.response.defer()
-    profile = await get_user_profile(interaction.user)
-    
-    players_data = await get_all_players()
-    if not players_data:
-        return await interaction.followup.send("❌ No hay jugadores registrados en el sistema.")
-        
-    added_count = 0
-    existing_ids = {p["id"] for p in profile["inventory"]}
-    
-    for row in players_data:
-        player = row["data"]
-        if player["id"] not in existing_ids:
-            profile["inventory"].append(player)
-            added_count += 1
-            
-    await save_user_profile(interaction.user.id, profile)
-    
-    embed = discord.Embed(title="🚀 ¡CLAIM ALL EJECUTADO!", description=f"Se han añadido **{added_count}** nuevos jugadores a tu club para pruebas.", color=discord.Color.brand_green())
-    await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="jugadores", description="Lista todos los jugadores del bot (Mercado Global).")
 @is_not_locked()
@@ -942,6 +918,7 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
         embed_jogo.description = f"```\n{texto_log}\n```"
         embed_jogo.clear_fields()
         
+        # Placar profissional
         embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
         embed_jogo.add_field(name="⚔️", value="VS", inline=True)
         embed_jogo.add_field(name=f"✈️ {p2_profile['club_name']}", value=f"> **{p2_goles}**", inline=True)
