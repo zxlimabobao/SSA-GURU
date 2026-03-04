@@ -34,6 +34,7 @@ intents.members = True
 bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)
 
 bot_locked = False
+ACTIVE_MATCHES = set() # Trava global para impedir múltiplas partidas simultâneas
 
 # ==========================================
 # SISTEMA DE KEEP-ALIVE PARA O RENDER
@@ -55,7 +56,6 @@ async def start_web_server():
 # OTIMIZAÇÃO: GESTÃO DE RECURSOS E CACHE (500MB RAM SAFE)
 # ==========================================
 IMAGE_WIDTH, IMAGE_HEIGHT = 1400, 2100 
-# Cartas reduzidas um tiquin e preparadas para não esticar
 CARD_W, CARD_H = 260, 390 
 
 BASE_FIELD_IMAGE = None
@@ -127,7 +127,13 @@ async def fetch_player_image_async(session, player_id, card_url):
             def process_image():
                 try:
                     p_img = Image.open(BytesIO(image_bytes)).convert("RGBA")
-                    # Uso de 'thumbnail' para manter a proporção original e NÃO ESTICAR
+                    
+                    # OTIMIZAÇÃO DE CARTA LARGA: Remove bordas transparentes enormes
+                    bbox = p_img.getbbox()
+                    if bbox:
+                        p_img = p_img.crop(bbox)
+                        
+                    # Uso de 'thumbnail' após o crop mantém a proporção real
                     p_img.thumbnail((CARD_W, CARD_H), Image.Resampling.LANCZOS)
                     
                     if len(PLAYER_CARD_CACHE) >= MAX_CACHE_SIZE:
@@ -161,7 +167,6 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
             p_img = processed_cards_map.get(player["id"])
 
         if p_img:
-            # Pega o tamanho real da imagem já processada e centraliza perfeitamente
             img_w, img_h = p_img.size
             temp_img.paste(p_img, (int(cx - img_w//2), int(cy - img_h//2)), p_img)
         else:
@@ -371,10 +376,9 @@ class ClaimView(discord.ui.View):
         self.player = player
         self.precio_venta = int(precio * 0.5)
         self.processed = False
-        self.message = None # Será atribuída logo após enviar a mensagem
+        self.message = None 
 
     async def on_timeout(self):
-        # Auto-claim: Se a pessoa não clicar em nada, o jogador vai direto pro elenco
         if not self.processed and self.message:
             self.processed = True
             profile = await get_user_profile(self.user)
@@ -546,6 +550,7 @@ async def help_cmd(interaction: discord.Interaction):
     `/addplayerinicial` - Sube un jugador a titular.
     `/onceinicial` - Manda un titular al banquillo.
     `/matching` - ¡Desafía a un rival a un partido!
+    `/ia_match` - ¡Juega contra la Inteligencia Artificial!
     `/ranking` - Mira el Top Global de Victorias.
     """
     embed.add_field(name="⚽ Gestión y Partidos", value=equipo_cmds, inline=False)
@@ -713,7 +718,7 @@ async def claim(interaction: discord.Interaction):
     
     view = ClaimView(interaction.user, obtenido, precio)
     msg = await interaction.followup.send("¿Qué deseas hacer con este jugador?", embed=embed, view=view)
-    view.message = msg # Acopla a mensagem à view para o on_timeout funcionar
+    view.message = msg 
 
 @bot.tree.command(name="jugadores", description="Lista todos los jugadores del bot (Mercado Global).")
 @is_not_locked()
@@ -817,7 +822,7 @@ async def onceinicial(interaction: discord.Interaction, nombre: str):
     await save_user_profile(interaction.user.id, profile)
     await interaction.response.send_message(f"⬇️ **{target['name']}** ha sido enviado al banquillo.", ephemeral=True)
 
-# --- CLASSE E COMANDO DO DUELO (MATCHING) ---
+# --- SISTEMA DE PARTIDAS (PVP e IA) ---
 class MatchAcceptView(discord.ui.View):
     def __init__(self, author, oponente):
         super().__init__(timeout=60)
@@ -849,6 +854,9 @@ class MatchAcceptView(discord.ui.View):
 async def matching(interaction: discord.Interaction, rival: discord.Member):
     if rival.id == interaction.user.id:
         return await interaction.response.send_message("❌ No puedes jugar contra ti mismo.", ephemeral=True)
+    
+    if interaction.user.id in ACTIVE_MATCHES or rival.id in ACTIVE_MATCHES:
+        return await interaction.response.send_message("❌ Alguien ya está jugando un partido. Espera a que termine.", ephemeral=True)
         
     p1_profile = await get_user_profile(interaction.user)
     p2_profile = await get_user_profile(rival)
@@ -861,117 +869,245 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
     if len(p2_xi) < 11:
         return await interaction.response.send_message(f"❌ El equipo de {rival.display_name} NO está completo.", ephemeral=True)
         
-    p1_fuerza = sum(p["over"] for p in p1_xi)
-    p2_fuerza = sum(p["over"] for p in p2_xi)
+    ACTIVE_MATCHES.add(interaction.user.id)
+    ACTIVE_MATCHES.add(rival.id)
     
-    embed_convite = discord.Embed(
-        title="⚔️ ¡NUEVO DESAFÍO EN EL CAMPO!",
-        description=f"**{interaction.user.display_name}** ha lanzado el guante y desafía a {rival.mention} a un partido oficial.",
-        color=discord.Color.red()
-    )
-    embed_convite.add_field(name="🏟️ Estadio", value="SSA Arena", inline=True)
-    embed_convite.add_field(name="🏆 En Juego", value="El Honor y los Puntos", inline=True)
-    embed_convite.set_footer(text="¡El desafiado tiene 60 segundos para aceptar o quedar como un cobarde!")
+    try:
+        p1_fuerza = sum(p["over"] for p in p1_xi)
+        p2_fuerza = sum(p["over"] for p in p2_xi)
+        
+        embed_convite = discord.Embed(
+            title="⚔️ ¡NUEVO DESAFÍO EN EL CAMPO!",
+            description=f"**{interaction.user.display_name}** ha lanzado el guante y desafía a {rival.mention} a un partido oficial.",
+            color=discord.Color.red()
+        )
+        embed_convite.add_field(name="🏟️ Estadio", value="SSA Arena", inline=True)
+        embed_convite.add_field(name="🏆 En Juego", value="El Honor y los Puntos", inline=True)
+        embed_convite.set_footer(text="¡El desafiado tiene 60 segundos para aceptar o quedar como un cobarde!")
 
-    view = MatchAcceptView(interaction.user, rival)
-    await interaction.response.send_message(content=rival.mention, embed=embed_convite, view=view)
-    
-    await view.wait()
-    
-    if view.accepted is None:
-        return await interaction.followup.send(f"⏱️ El tiempo expiró. **{rival.display_name}** no se atrevió a salir al campo.")
-    elif not view.accepted:
-        return 
+        view = MatchAcceptView(interaction.user, rival)
+        await interaction.response.send_message(content=rival.mention, embed=embed_convite, view=view)
         
-    message = await interaction.original_response()
-    embed_jogo = discord.Embed(title="🎙️ TRANSMISIÓN EN VIVO - SSA TV", description="```\nEl balón está a punto de rodar...\n```", color=discord.Color.green())
-    await message.edit(content=f"🏟️ **¡La afición en la SSA Arena enloquece! ¡El árbitro pita el inicio!**", embed=embed_jogo, view=None)
-    
-    p1_goles = 0
-    p2_goles = 0
-    historial_eventos = []
-    minuto_actual = 0
-    
-    narrativas = {
-        "gol": [
-            "⚽ ¡GOOOOOOOLAZO! {atk} fusiló al portero {gk} tras una asistencia de {ast}.",
-            "⚽ ¡GOL GOL GOL GOL! {atk} dejó a {defensor} en el suelo y la mandó a guardar.",
-            "⚽ ¡QUÉ DEFINICIÓN! {atk} pica el balón sobre {gk} con una clase magistral.",
-            "⚽ ¡GOL DE CABEZA! Centro medido de {ast} y {atk} se eleva por los cielos.",
-            "⚽ ¡ZAPATAZO IMPARABLE! {atk} rompe las redes desde fuera del área."
-        ],
-        "defesa": [
-            "🧤 ¡SAN {gk}! Vuelo espectacular para sacar el disparo de {atk} del ángulo.",
-            "🛡️ ¡LA MURALLA! {defensor} se cruza en el último segundo para bloquear a {atk}.",
-            "🧤 ¡QUÉ REFLEJOS! {atk} remata a quemarropa pero {gk} salva milagrosamente.",
-            "🛡️ ¡CORTE PROVIDENCIAL! {defensor} lee la jugada y le roba el gol a {atk}."
-        ],
-        "erro": [
-            "❌ ¡A LAS NUBES! {atk} la manda al tercer anfiteatro. Saque de puerta.",
-            "❌ ¡AL PALO! El disparo de {atk} hace temblar el travesaño. ¡Se salva el equipo!",
-            "❌ ¡NO ME LO CREO! {atk} falla a puerta vacía tras el pase de {ast}.",
-            "⚠️ ¡FALTA TÁCTICA! {defensor} derriba a {atk} para frenar el contragolpe."
-        ]
-    }
-    
-    while minuto_actual < 90:
-        await asyncio.sleep(2.5) 
-        minuto_actual += random.randint(5, 11) 
-        if minuto_actual > 90: minuto_actual = 90
+        await view.wait()
         
-        prob_p1 = p1_fuerza / (p1_fuerza + p2_fuerza)
-        is_p1_attack = random.random() < prob_p1
-        
-        atk_team, atk_xi = (p1_profile, p1_xi) if is_p1_attack else (p2_profile, p2_xi)
-        def_team, def_xi = (p2_profile, p2_xi) if is_p1_attack else (p1_profile, p1_xi)
-        
-        atacante = get_random_player_name(atk_xi, ["DC", "MID"])
-        asistente = get_random_player_name(atk_xi, ["MID", "DFC"])
-        defensor = get_random_player_name(def_xi, ["DFC", "MID"])
-        portero = get_random_player_name(def_xi, ["PO"])
-        
-        dice = random.random()
-        if dice < 0.35: # Gol
-            if is_p1_attack: p1_goles += 1
-            else: p2_goles += 1
-            lance = random.choice(narrativas["gol"]).format(atk=atacante, ast=asistente, gk=portero, defensor=defensor)
-        elif dice < 0.70: # Defesa
-            lance = random.choice(narrativas["defesa"]).format(atk=atacante, gk=portero, defensor=defensor)
-        else: # Erro
-            lance = random.choice(narrativas["erro"]).format(atk=atacante, gk=portero, ast=asistente, defensor=defensor)
+        if view.accepted is None:
+            return await interaction.followup.send(f"⏱️ El tiempo expiró. **{rival.display_name}** no se atrevió a salir al campo.")
+        elif not view.accepted:
+            return 
             
-        historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
-        texto_log = "\n\n".join(historial_eventos[-8:]) 
+        message = await interaction.original_response()
+        embed_jogo = discord.Embed(title="🎙️ TRANSMISIÓN EN VIVO - SSA TV", description="```\nEl balón está a punto de rodar...\n```", color=discord.Color.green())
+        await message.edit(content=f"🏟️ **¡La afición en la SSA Arena enloquece! ¡El árbitro pita el inicio!**", embed=embed_jogo, view=None)
         
-        embed_jogo.description = f"```\n{texto_log}\n```"
-        embed_jogo.clear_fields()
+        p1_goles = 0
+        p2_goles = 0
+        historial_eventos = []
+        minuto_actual = 0
         
-        embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
-        embed_jogo.add_field(name="⚔️", value="VS", inline=True)
-        embed_jogo.add_field(name=f"✈️ {p2_profile['club_name']}", value=f"> **{p2_goles}**", inline=True)
+        narrativas = {
+            "gol": [
+                "⚽ ¡GOOOOOOOLAZO! {atk} fusiló al portero {gk} tras una asistencia de {ast}.",
+                "⚽ ¡GOL GOL GOL GOL! {atk} dejó a {defensor} en el suelo y la mandó a guardar.",
+                "⚽ ¡QUÉ DEFINICIÓN! {atk} pica el balón sobre {gk} con una clase magistral.",
+                "⚽ ¡GOL DE CABEZA! Centro medido de {ast} y {atk} se eleva por los cielos.",
+                "⚽ ¡ZAPATAZO IMPARABLE! {atk} rompe las redes desde fuera del área."
+            ],
+            "defesa": [
+                "🧤 ¡SAN {gk}! Vuelo espectacular para sacar el disparo de {atk} del ángulo.",
+                "🛡️ ¡LA MURALLA! {defensor} se cruza en el último segundo para bloquear a {atk}.",
+                "🧤 ¡QUÉ REFLEJOS! {atk} remata a quemarropa pero {gk} salva milagrosamente.",
+                "🛡️ ¡CORTE PROVIDENCIAL! {defensor} lee la jugada y le roba el gol a {atk}."
+            ],
+            "erro": [
+                "❌ ¡A LAS NUBES! {atk} la manda al tercer anfiteatro. Saque de puerta.",
+                "❌ ¡AL PALO! El disparo de {atk} hace temblar el travesaño. ¡Se salva el equipo!",
+                "❌ ¡NO ME LO CREO! {atk} falla a puerta vacía tras el pase de {ast}.",
+                "⚠️ ¡FALTA TÁCTICA! {defensor} derriba a {atk} para frenar el contragolpe."
+            ]
+        }
         
-        await message.edit(embed=embed_jogo)
+        while minuto_actual < 90:
+            await asyncio.sleep(2.5) 
+            minuto_actual += random.randint(5, 11) 
+            if minuto_actual > 90: minuto_actual = 90
+            
+            prob_p1 = p1_fuerza / (p1_fuerza + p2_fuerza)
+            is_p1_attack = random.random() < prob_p1
+            
+            atk_team, atk_xi = (p1_profile, p1_xi) if is_p1_attack else (p2_profile, p2_xi)
+            def_team, def_xi = (p2_profile, p2_xi) if is_p1_attack else (p1_profile, p1_xi)
+            
+            atacante = get_random_player_name(atk_xi, ["DC", "MID"])
+            asistente = get_random_player_name(atk_xi, ["MID", "DFC"])
+            defensor = get_random_player_name(def_xi, ["DFC", "MID"])
+            portero = get_random_player_name(def_xi, ["PO"])
+            
+            dice = random.random()
+            if dice < 0.35: 
+                if is_p1_attack: p1_goles += 1
+                else: p2_goles += 1
+                lance = random.choice(narrativas["gol"]).format(atk=atacante, ast=asistente, gk=portero, defensor=defensor)
+            elif dice < 0.70: 
+                lance = random.choice(narrativas["defesa"]).format(atk=atacante, gk=portero, defensor=defensor)
+            else: 
+                lance = random.choice(narrativas["erro"]).format(atk=atacante, gk=portero, ast=asistente, defensor=defensor)
+                
+            historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
+            texto_log = "\n\n".join(historial_eventos[-8:]) 
+            
+            embed_jogo.description = f"```\n{texto_log}\n```"
+            embed_jogo.clear_fields()
+            
+            embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
+            embed_jogo.add_field(name="⚔️", value="VS", inline=True)
+            embed_jogo.add_field(name=f"✈️ {p2_profile['club_name']}", value=f"> **{p2_goles}**", inline=True)
+            
+            await message.edit(embed=embed_jogo)
+            
+        await asyncio.sleep(2)
+        final_embed = discord.Embed(title="🏁 ¡FINAL DEL PARTIDO EN LA SSA ARENA!", color=discord.Color.dark_gold())
+        final_embed.description = f"```\n{chr(10).join(historial_eventos)}\n```" 
+        resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_profile['club_name']}**"
+        final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
         
-    await asyncio.sleep(2)
-    final_embed = discord.Embed(title="🏁 ¡FINAL DEL PARTIDO EN LA SSA ARENA!", color=discord.Color.dark_gold())
-    final_embed.description = f"```\n{chr(10).join(historial_eventos)}\n```" 
-    resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_profile['club_name']}**"
-    final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
+        if p1_goles > p2_goles:
+            p1_profile["wins"] += 1
+            p2_profile["losses"] += 1
+            final_embed.set_footer(text=f"🏆 ¡Victoria espectacular para {p1_profile['club_name']}!")
+        elif p2_goles > p1_goles:
+            p2_profile["wins"] += 1
+            p1_profile["losses"] += 1
+            final_embed.set_footer(text=f"🏆 ¡Victoria espectacular para {p2_profile['club_name']}!")
+        else:
+            final_embed.set_footer(text="🤝 ¡Todo igual! Fin del partido.")
+            
+        await save_user_profile(interaction.user.id, p1_profile)
+        await save_user_profile(rival.id, p2_profile)
+        await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
+        
+    finally:
+        ACTIVE_MATCHES.discard(interaction.user.id)
+        ACTIVE_MATCHES.discard(rival.id)
+
+@bot.tree.command(name="ia_match", description="Juega un partido contra la Inteligencia Artificial (Cooldown: 2 min).")
+@app_commands.checks.cooldown(1, 120, key=lambda i: i.user.id)
+@is_not_locked()
+async def ia_match(interaction: discord.Interaction):
+    if interaction.user.id in ACTIVE_MATCHES:
+        return await interaction.response.send_message("❌ Ya estás en un partido.", ephemeral=True)
+        
+    p1_profile = await get_user_profile(interaction.user)
+    p1_xi = p1_profile["starting_xi"]
     
-    if p1_goles > p2_goles:
-        p1_profile["wins"] += 1
-        p2_profile["losses"] += 1
-        final_embed.set_footer(text=f"🏆 ¡Victoria espectacular para {p1_profile['club_name']}!")
-    elif p2_goles > p1_goles:
-        p2_profile["wins"] += 1
-        p1_profile["losses"] += 1
-        final_embed.set_footer(text=f"🏆 ¡Victoria espectacular para {p2_profile['club_name']}!")
-    else:
-        final_embed.set_footer(text="🤝 ¡Todo igual! Fin del partido.")
+    if len(p1_xi) < 11:
+        return await interaction.response.send_message("❌ Tu equipo NO está completo. Necesitas 11 titulares.", ephemeral=True)
+
+    ACTIVE_MATCHES.add(interaction.user.id)
+    
+    try:
+        p1_fuerza = sum(p["over"] for p in p1_xi)
+        # Oponente IA tem força parecida com o jogador
+        p2_fuerza = max(100, p1_fuerza + random.randint(-20, 20))
+        p2_club_name = "🤖 SSA Bot IA"
         
-    await save_user_profile(interaction.user.id, p1_profile)
-    await save_user_profile(rival.id, p2_profile)
-    await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
+        # Gera 11 jogadores genéricos para a IA baseados na força média
+        media_ia = p2_fuerza // 11
+        p2_xi = [{"name": f"Bot {pos}", "pos": pos, "over": media_ia} for pos in ["PO", "DFC", "DFC", "DFC", "DFC", "MID", "MID", "MID", "DC", "DC", "DC"]]
+        
+        await interaction.response.send_message("⚙️ **Configurando partido contra la IA...**")
+        message = await interaction.original_response()
+        
+        embed_jogo = discord.Embed(title="🎙️ TRANSMISIÓN EN VIVO - SSA TV", description="```\nEl balón está a punto de rodar contra la Máquina...\n```", color=discord.Color.blurple())
+        await message.edit(content=f"🏟️ **¡La afición en la SSA Arena enloquece! ¡El árbitro pita el inicio!**", embed=embed_jogo)
+        
+        p1_goles = 0
+        p2_goles = 0
+        historial_eventos = []
+        minuto_actual = 0
+        
+        narrativas = {
+            "gol": [
+                "⚽ ¡GOOOOOOOLAZO! {atk} fusiló al portero {gk} tras una asistencia de {ast}.",
+                "⚽ ¡GOL GOL GOL GOL! {atk} dejó a {defensor} en el suelo y la mandó a guardar.",
+                "⚽ ¡QUÉ DEFINICIÓN! {atk} pica el balón sobre {gk} con una clase magistral."
+            ],
+            "defesa": [
+                "🧤 ¡SAN {gk}! Vuelo espectacular para sacar el disparo de {atk} del ángulo.",
+                "🛡️ ¡LA MURALLA! {defensor} se cruza en el último segundo para bloquear a {atk}.",
+                "🧤 ¡QUÉ REFLEJOS! {atk} remata a quemarropa pero {gk} salva milagrosamente."
+            ],
+            "erro": [
+                "❌ ¡A LAS NUBES! {atk} la manda al tercer anfiteatro. Saque de puerta.",
+                "❌ ¡AL PALO! El disparo de {atk} hace temblar el travesaño. ¡Se salva el equipo!",
+                "❌ ¡NO ME LO CREO! {atk} falla a puerta vacía tras el pase de {ast}."
+            ]
+        }
+        
+        while minuto_actual < 90:
+            await asyncio.sleep(2.5) 
+            minuto_actual += random.randint(5, 11) 
+            if minuto_actual > 90: minuto_actual = 90
+            
+            prob_p1 = p1_fuerza / (p1_fuerza + p2_fuerza)
+            is_p1_attack = random.random() < prob_p1
+            
+            atk_xi_now = p1_xi if is_p1_attack else p2_xi
+            def_xi_now = p2_xi if is_p1_attack else p1_xi
+            
+            atacante = get_random_player_name(atk_xi_now, ["DC", "MID"])
+            asistente = get_random_player_name(atk_xi_now, ["MID", "DFC"])
+            defensor = get_random_player_name(def_xi_now, ["DFC", "MID"])
+            portero = get_random_player_name(def_xi_now, ["PO"])
+            
+            dice = random.random()
+            if dice < 0.35: 
+                if is_p1_attack: p1_goles += 1
+                else: p2_goles += 1
+                lance = random.choice(narrativas["gol"]).format(atk=atacante, ast=asistente, gk=portero, defensor=defensor)
+            elif dice < 0.70: 
+                lance = random.choice(narrativas["defesa"]).format(atk=atacante, gk=portero, defensor=defensor)
+            else: 
+                lance = random.choice(narrativas["erro"]).format(atk=atacante, gk=portero, ast=asistente, defensor=defensor)
+                
+            historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
+            texto_log = "\n\n".join(historial_eventos[-8:]) 
+            
+            embed_jogo.description = f"```\n{texto_log}\n```"
+            embed_jogo.clear_fields()
+            
+            embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
+            embed_jogo.add_field(name="⚔️", value="VS", inline=True)
+            embed_jogo.add_field(name=f"🤖 {p2_club_name}", value=f"> **{p2_goles}**", inline=True)
+            
+            await message.edit(embed=embed_jogo)
+            
+        await asyncio.sleep(2)
+        final_embed = discord.Embed(title="🏁 ¡FINAL DEL PARTIDO CONTRA LA IA!", color=discord.Color.dark_gold())
+        final_embed.description = f"```\n{chr(10).join(historial_eventos)}\n```" 
+        resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_club_name}**"
+        final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
+        
+        # Contra a IA, vitória dá pontos, mas derrota não tira
+        if p1_goles > p2_goles:
+            p1_profile["wins"] += 1
+            final_embed.set_footer(text=f"🏆 ¡Le ganaste a la máquina, {p1_profile['club_name']}!")
+            await save_user_profile(interaction.user.id, p1_profile)
+        elif p2_goles > p1_goles:
+            final_embed.set_footer(text=f"🤖 La máquina fue superior esta vez.")
+        else:
+            final_embed.set_footer(text="🤝 ¡Empate contra la IA!")
+            
+        await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
+        
+    finally:
+        ACTIVE_MATCHES.discard(interaction.user.id)
+
+@ia_match.error
+async def ia_match_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        minutos = int(error.retry_after // 60)
+        segundos = int(error.retry_after % 60)
+        await interaction.response.send_message(f"⏳ Los jugadores están descansando. Espera **{minutos}m {segundos}s** para jugar contra la IA de nuevo.", ephemeral=True)
 
 @bot.tree.command(name="ranking", description="Muestra el ranking global de victorias.")
 @is_not_locked()
@@ -1120,20 +1256,52 @@ async def editplayer(interaction: discord.Interaction, nombre: str, nuevo_over: 
         embed.set_thumbnail(url=data["card"])
     await interaction.followup.send(embed=embed)
 
-@bot.tree.command(name="delplayer", description="Admin: Elimina un jugador.")
+@bot.tree.command(name="delplayer", description="Admin: Elimina un jugador permanentemente de todo el sistema.")
 @app_commands.checks.has_permissions(administrator=True)
 async def delplayer(interaction: discord.Interaction, nombre: str):
     await interaction.response.defer(ephemeral=True)
     players = await get_all_players()
     matches = [p for p in players if nombre.lower() in p["data"]["name"].lower()]
     if not matches: return await interaction.followup.send("❌ Jugador no encontrado.")
-    player_id_del = matches[0]["data"]["id"]
+    
+    player_data = matches[0]["data"]
+    player_id_del = player_data["id"]
+    player_name = player_data["name"]
+    
+    # 1. Deleta do banco global
     await db_delete(player_id_del)
     
+    # 2. Limpa o cache de RAM
     if player_id_del in PLAYER_CARD_CACHE:
         del PLAYER_CARD_CACHE[player_id_del]
         
-    await interaction.followup.send(f"🗑️ Jugador eliminado y cache limpio.")
+    # 3. Vassoura Global: Remove do inventário e time titular de TODOS
+    users = await get_all_users()
+    updated_users = 0
+    
+    for u in users:
+        profile = u["data"]
+        changed = False
+        
+        orig_inv_len = len(profile.get("inventory", []))
+        profile["inventory"] = [p for p in profile.get("inventory", []) if p["id"] != player_id_del]
+        if len(profile["inventory"]) != orig_inv_len:
+            changed = True
+            
+        orig_xi_len = len(profile.get("starting_xi", []))
+        profile["starting_xi"] = [p for p in profile.get("starting_xi", []) if p["id"] != player_id_del]
+        if len(profile["starting_xi"]) != orig_xi_len:
+            changed = True
+            
+        if changed:
+            try:
+                u_id_int = int(u["id"].split("_")[1])
+                await save_user_profile(u_id_int, profile)
+                updated_users += 1
+            except:
+                pass
+                
+    await interaction.followup.send(f"🗑️ Jugador **{player_name}** eliminado permanentemente y removido del elenco de {updated_users} clube(s).")
 
 @bot.tree.command(name="lock", description="Admin: Bloquea comandos.")
 @app_commands.checks.has_permissions(administrator=True)
@@ -1176,7 +1344,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 if __name__ == "__main__":
     if not os.path.exists("renogare.otf"):
         print("⚠️ ARCHIVO 'renogare.otf' NO ENCONTRADO.")
-        print("Asegúrate de colocar 'renogare.otf' en la misma carpeta que este script.")
+        print("Asegúrate de colocar 'renogare.otf' en la mesma pasta que este script.")
         print("El bot usará la fuente por defecto para las imágenes generadas.")
         
     bot.run(DISCORD_TOKEN)
