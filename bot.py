@@ -7,7 +7,7 @@ import random
 import uuid
 import requests
 import aiohttp
-from aiohttp import web # ADICIONADO PARA O RENDER
+from aiohttp import web
 from supabase import create_client, Client
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
@@ -36,7 +36,7 @@ bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)
 bot_locked = False
 
 # ==========================================
-# SISTEMA DE KEEP-ALIVE PARA O RENDER (NOVO)
+# SISTEMA DE KEEP-ALIVE PARA O RENDER
 # ==========================================
 async def handle_web(request):
     return web.Response(text="Bot SSA Guru está online e rodando no Render!")
@@ -46,7 +46,6 @@ async def start_web_server():
     app.router.add_get('/', handle_web)
     runner = web.AppRunner(app)
     await runner.setup()
-    # O Render passa a porta dinamicamente pela variável de ambiente PORT
     port = int(os.environ.get("PORT", 8080))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
@@ -56,7 +55,8 @@ async def start_web_server():
 # OTIMIZAÇÃO: GESTÃO DE RECURSOS E CACHE (500MB RAM SAFE)
 # ==========================================
 IMAGE_WIDTH, IMAGE_HEIGHT = 1400, 2100 
-CARD_W, CARD_H = 300, 450 
+# Cartas reduzidas um tiquin e preparadas para não esticar
+CARD_W, CARD_H = 260, 390 
 
 BASE_FIELD_IMAGE = None
 CACHED_FONTS = {}
@@ -127,7 +127,8 @@ async def fetch_player_image_async(session, player_id, card_url):
             def process_image():
                 try:
                     p_img = Image.open(BytesIO(image_bytes)).convert("RGBA")
-                    p_img = p_img.resize((CARD_W, CARD_H), Image.Resampling.LANCZOS)
+                    # Uso de 'thumbnail' para manter a proporção original e NÃO ESTICAR
+                    p_img.thumbnail((CARD_W, CARD_H), Image.Resampling.LANCZOS)
                     
                     if len(PLAYER_CARD_CACHE) >= MAX_CACHE_SIZE:
                         oldest_key = next(iter(PLAYER_CARD_CACHE))
@@ -160,7 +161,9 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
             p_img = processed_cards_map.get(player["id"])
 
         if p_img:
-            temp_img.paste(p_img, (int(cx - CARD_W//2), int(cy - CARD_H//2)), p_img)
+            # Pega o tamanho real da imagem já processada e centraliza perfeitamente
+            img_w, img_h = p_img.size
+            temp_img.paste(p_img, (int(cx - img_w//2), int(cy - img_h//2)), p_img)
         else:
             x1, y1 = int(cx - CARD_W//2), int(cy - CARD_H//2)
             x2, y2 = int(cx + CARD_W//2), int(cy + CARD_H//2)
@@ -363,11 +366,36 @@ class BuyView(discord.ui.View):
 
 class ClaimView(discord.ui.View):
     def __init__(self, user, player, precio):
-        super().__init__(timeout=60)
+        super().__init__(timeout=60) # 60 segundos de inatividade
         self.user = user
         self.player = player
         self.precio_venta = int(precio * 0.5)
         self.processed = False
+        self.message = None # Será atribuída logo após enviar a mensagem
+
+    async def on_timeout(self):
+        # Auto-claim: Se a pessoa não clicar em nada, o jogador vai direto pro elenco
+        if not self.processed and self.message:
+            self.processed = True
+            profile = await get_user_profile(self.user)
+            
+            if any(p["id"] == self.player["id"] for p in profile["inventory"]):
+                embed = self.message.embeds[0]
+                embed.color = discord.Color.red()
+                embed.title = "❌ Ya posees a este jugador"
+                embed.description = "El jugador ya estaba en tu inventario."
+                self.disable_all()
+                await self.message.edit(content="⏱️ Tiempo agotado. Se convirtió en fondos de entrenamiento.", embed=embed, view=self)
+            else:
+                profile["inventory"].append(self.player)
+                await save_user_profile(self.user.id, profile)
+                
+                embed = self.message.embeds[0]
+                embed.color = discord.Color.green()
+                embed.title = f"🎉 ¡{self.player['name']} Añadido al Club!"
+                embed.description = f"✅ **El jugador se ha guardado automáticamente en tu inventario por inactividad.**"
+                self.disable_all()
+                await self.message.edit(content="⏱️ Tiempo agotado. Jugador guardado.", embed=embed, view=self)
 
     @discord.ui.button(label="Ficar (Añadir al Club)", style=discord.ButtonStyle.success, emoji="✅")
     async def keep_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -474,7 +502,6 @@ async def on_ready():
     global BASE_FIELD_IMAGE, HTTP_SESSION
     print(f"✅ Bot {bot.user.name} conectado y listo.")
     
-    # LIGA O SERVIDOR FANTASMA PARA O RENDER NÃO DERRUBAR O BOT
     bot.loop.create_task(start_web_server())
 
     if HTTP_SESSION is None:
@@ -685,7 +712,8 @@ async def claim(interaction: discord.Interaction):
     if obtenido.get("card"): embed.set_image(url=obtenido["card"])
     
     view = ClaimView(interaction.user, obtenido, precio)
-    await interaction.followup.send("¿Qué deseas hacer con este jugador?", embed=embed, view=view)
+    msg = await interaction.followup.send("¿Qué deseas hacer con este jugador?", embed=embed, view=view)
+    view.message = msg # Acopla a mensagem à view para o on_timeout funcionar
 
 @bot.tree.command(name="jugadores", description="Lista todos los jugadores del bot (Mercado Global).")
 @is_not_locked()
@@ -918,7 +946,6 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
         embed_jogo.description = f"```\n{texto_log}\n```"
         embed_jogo.clear_fields()
         
-        # Placar profissional
         embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
         embed_jogo.add_field(name="⚔️", value="VS", inline=True)
         embed_jogo.add_field(name=f"✈️ {p2_profile['club_name']}", value=f"> **{p2_goles}**", inline=True)
@@ -1149,7 +1176,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 if __name__ == "__main__":
     if not os.path.exists("renogare.otf"):
         print("⚠️ ARCHIVO 'renogare.otf' NO ENCONTRADO.")
-        print("Asegúrate de colocar 'renogare.otf' en la mesma pasta que este script.")
+        print("Asegúrate de colocar 'renogare.otf' en la misma carpeta que este script.")
         print("El bot usará la fuente por defecto para las imágenes generadas.")
         
     bot.run(DISCORD_TOKEN)
