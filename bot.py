@@ -822,7 +822,7 @@ async def onceinicial(interaction: discord.Interaction, nombre: str):
     await save_user_profile(interaction.user.id, profile)
     await interaction.response.send_message(f"⬇️ **{target['name']}** ha sido enviado al banquillo.", ephemeral=True)
 
-# --- SISTEMA DE PARTIDAS (PVP e IA) ---
+# --- SISTEMA DE PARTIDAS E PENALTIS (PVP e IA) ---
 class MatchAcceptView(discord.ui.View):
     def __init__(self, author, oponente):
         super().__init__(timeout=60)
@@ -848,6 +848,157 @@ class MatchAcceptView(discord.ui.View):
         await interaction.response.edit_message(view=self)
         await interaction.followup.send(f"🚫 **¡Cobarde!** El miedo dominó el vestuario de **{self.oponente.display_name}** y huyó del partido.")
         self.stop()
+
+class PenaltyView(discord.ui.View):
+    def __init__(self, p1, p2, p1_name, p2_name, is_ia=False):
+        super().__init__(timeout=300)
+        self.p1 = p1
+        self.p2 = p2
+        self.p1_name = p1_name
+        self.p2_name = p2_name
+        self.is_ia = is_ia
+
+        self.p1_score = 0
+        self.p2_score = 0
+        self.p1_history = []
+        self.p2_history = []
+
+        self.round = 1
+        self.is_p1_shooting = True
+
+        self.shooter_choice = None
+        self.gk_choice = None
+        self.winner = None
+        self.log = "¡Comienza la tanda de penaltis! Elige una acción."
+
+    def get_embed(self):
+        embed = discord.Embed(title="🥅 ¡TANDA DE PENALTIS!", description=f"```\n{self.log}\n```", color=discord.Color.blue())
+        p1_marks = " ".join(self.p1_history) + (" ⚪" * max(0, 5 - len(self.p1_history)))
+        p2_marks = " ".join(self.p2_history) + (" ⚪" * max(0, 5 - len(self.p2_history)))
+        
+        embed.add_field(name=f"🏠 {self.p1_name}", value=f"Marcador: **{self.p1_score}**\n{p1_marks}", inline=True)
+        embed.add_field(name="VS", value="⚡", inline=True)
+        embed.add_field(name=f"✈️ {self.p2_name}", value=f"Marcador: **{self.p2_score}**\n{p2_marks}", inline=True)
+
+        shooter = self.p1_name if self.is_p1_shooting else self.p2_name
+        gk = self.p2_name if self.is_p1_shooting else self.p1_name
+        embed.add_field(name=f"👉 RONDA {self.round}", value=f"⚽ Pateador: **{shooter}**\n🧤 Portero: **{gk}**\n\n*(Elige abajo. ¡El rival no sabrá tu elección hasta que ambos decidan!)*", inline=False)
+        return embed
+
+    async def process_turn(self, interaction):
+        if self.is_ia:
+            if self.is_p1_shooting and self.shooter_choice and not self.gk_choice:
+                self.gk_choice = random.choice(["left", "center", "right"])
+            elif not self.is_p1_shooting and self.gk_choice and not self.shooter_choice:
+                self.shooter_choice = random.choice(["left", "center", "right"])
+
+        if self.shooter_choice and self.gk_choice:
+            goal = False
+            # Fator sorte e estatística
+            if self.shooter_choice == self.gk_choice:
+                # Goleiro pulou certo: 80% de chance de defender, 20% de ser gol mesmo assim
+                if random.random() > 0.80: goal = True
+            else:
+                # Goleiro pulou errado: 90% de chance de gol, 10% do batedor chutar na trave/fora
+                if random.random() < 0.90: goal = True
+
+            shooter_name = self.p1_name if self.is_p1_shooting else self.p2_name
+            gk_name = self.p2_name if self.is_p1_shooting else self.p1_name
+
+            if goal:
+                self.log = f"⚽ ¡GOOOOOOOOL de {shooter_name}!\n({self._dir_es(self.shooter_choice)} vs {self._dir_es(self.gk_choice)})"
+                if self.is_p1_shooting:
+                    self.p1_score += 1
+                    self.p1_history.append("✅")
+                else:
+                    self.p2_score += 1
+                    self.p2_history.append("✅")
+            else:
+                self.log = f"🧤 ¡ATAJÓ {gk_name} / AFUERA!\n({self._dir_es(self.shooter_choice)} vs {self._dir_es(self.gk_choice)})"
+                if self.is_p1_shooting:
+                    self.p1_history.append("❌")
+                else:
+                    self.p2_history.append("❌")
+
+            self.shooter_choice = None
+            self.gk_choice = None
+
+            if not self.is_p1_shooting:
+                self.round += 1
+
+            self.is_p1_shooting = not self.is_p1_shooting
+
+            if self.check_winner():
+                self.stop()
+                for child in self.children: child.disabled = True
+                embed = self.get_embed()
+                embed.title = "🏆 ¡FIN DE LOS PENALTIS!"
+                embed.color = discord.Color.gold()
+                await interaction.message.edit(embed=embed, view=self)
+            else:
+                await interaction.message.edit(embed=self.get_embed(), view=self)
+
+    def check_winner(self):
+        shots_taken_p1 = len(self.p1_history)
+        shots_taken_p2 = len(self.p2_history)
+        shots_left_p1 = max(0, 5 - shots_taken_p1)
+        shots_left_p2 = max(0, 5 - shots_taken_p2)
+
+        if shots_taken_p1 <= 5 and shots_taken_p2 <= 5:
+            if self.p1_score > self.p2_score + shots_left_p2:
+                self.winner = self.p1
+                return True
+            if self.p2_score > self.p1_score + shots_left_p1:
+                self.winner = self.p2 if not self.is_ia else "IA"
+                return True
+        else:
+            if shots_taken_p1 == shots_taken_p2:
+                if self.p1_score > self.p2_score:
+                    self.winner = self.p1
+                    return True
+                if self.p2_score > self.p1_score:
+                    self.winner = self.p2 if not self.is_ia else "IA"
+                    return True
+        return False
+
+    def _dir_es(self, d):
+        return {"left": "Izquierda", "center": "Centro", "right": "Derecha"}[d]
+
+    @discord.ui.button(label="Izquierda", emoji="◀️", style=discord.ButtonStyle.primary)
+    async def btn_left(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_click(interaction, "left")
+
+    @discord.ui.button(label="Centro", emoji="⏺️", style=discord.ButtonStyle.primary)
+    async def btn_center(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_click(interaction, "center")
+
+    @discord.ui.button(label="Derecha", emoji="▶️", style=discord.ButtonStyle.primary)
+    async def btn_right(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_click(interaction, "right")
+
+    async def handle_click(self, interaction, choice):
+        is_shooter = False
+        is_gk = False
+
+        if self.is_p1_shooting:
+            if interaction.user.id == self.p1.id: is_shooter = True
+            elif self.p2 and interaction.user.id == self.p2.id: is_gk = True
+        else:
+            if self.p2 and interaction.user.id == self.p2.id: is_shooter = True
+            elif interaction.user.id == self.p1.id: is_gk = True
+
+        if is_shooter:
+            if self.shooter_choice: return await interaction.response.send_message("Ya elegiste.", ephemeral=True)
+            self.shooter_choice = choice
+            await interaction.response.send_message("🎯 Dirección de tiro registrada. Esperando...", ephemeral=True)
+        elif is_gk:
+            if self.gk_choice: return await interaction.response.send_message("Ya elegiste.", ephemeral=True)
+            self.gk_choice = choice
+            await interaction.response.send_message("🧤 Dirección de atajada registrada. Esperando...", ephemeral=True)
+        else:
+            return await interaction.response.send_message("❌ Acción no permitida. (No es tu turno o no juegas esto)", ephemeral=True)
+
+        await self.process_turn(interaction)
 
 @bot.tree.command(name="matching", description="Desafía a un oponente a un duelo 11v11 en la SSA Arena.")
 @is_not_locked()
@@ -974,17 +1125,46 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
             p1_profile["wins"] += 1
             p2_profile["losses"] += 1
             final_embed.set_footer(text=f"🏆 ¡Victoria espectacular para {p1_profile['club_name']}!")
+            await save_user_profile(interaction.user.id, p1_profile)
+            await save_user_profile(rival.id, p2_profile)
+            await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
+            
         elif p2_goles > p1_goles:
             p2_profile["wins"] += 1
             p1_profile["losses"] += 1
             final_embed.set_footer(text=f"🏆 ¡Victoria espectacular para {p2_profile['club_name']}!")
-        else:
-            final_embed.set_footer(text="🤝 ¡Todo igual! Fin del partido.")
+            await save_user_profile(interaction.user.id, p1_profile)
+            await save_user_profile(rival.id, p2_profile)
+            await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
             
-        await save_user_profile(interaction.user.id, p1_profile)
-        await save_user_profile(rival.id, p2_profile)
-        await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
-        
+        else:
+            final_embed.set_footer(text="🤝 ¡Empate reglamentario! Nos vamos a los PENALTIS.")
+            await message.edit(content="🎙️ **¡Habrá penaltis!**", embed=final_embed)
+            await asyncio.sleep(3)
+            
+            # INICIA PENALTIS
+            penalty_view = PenaltyView(interaction.user, rival, p1_profile["club_name"], p2_profile["club_name"], is_ia=False)
+            await message.edit(embed=penalty_view.get_embed(), view=penalty_view)
+            await penalty_view.wait()
+
+            if penalty_view.winner == interaction.user:
+                p1_profile["wins"] += 1
+                p2_profile["losses"] += 1
+                final_text = f"🏆 ¡Victoria en penaltis para {p1_profile['club_name']}!"
+            elif penalty_view.winner == rival:
+                p2_profile["wins"] += 1
+                p1_profile["losses"] += 1
+                final_text = f"🏆 ¡Victoria en penaltis para {p2_profile['club_name']}!"
+            else:
+                final_text = "🤝 Penaltis cancelados o finalizados sin ganador."
+            
+            final_p_embed = penalty_view.get_embed()
+            final_p_embed.set_footer(text=final_text)
+            await message.edit(embed=final_p_embed, view=None)
+
+            await save_user_profile(interaction.user.id, p1_profile)
+            await save_user_profile(rival.id, p2_profile)
+            
     finally:
         ACTIVE_MATCHES.discard(interaction.user.id)
         ACTIVE_MATCHES.discard(rival.id)
@@ -1092,13 +1272,33 @@ async def ia_match(interaction: discord.Interaction):
             p1_profile["wins"] += 1
             final_embed.set_footer(text=f"🏆 ¡Le ganaste a la máquina, {p1_profile['club_name']}!")
             await save_user_profile(interaction.user.id, p1_profile)
+            await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
+            
         elif p2_goles > p1_goles:
             final_embed.set_footer(text=f"🤖 La máquina fue superior esta vez.")
-        else:
-            final_embed.set_footer(text="🤝 ¡Empate contra la IA!")
+            await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
             
-        await message.edit(content="🎙️ **Transmisión finalizada.**", embed=final_embed)
-        
+        else:
+            final_embed.set_footer(text="🤝 ¡Empate reglamentario! Nos vamos a los PENALTIS.")
+            await message.edit(content="🎙️ **¡Habrá penaltis contra la IA!**", embed=final_embed)
+            await asyncio.sleep(3)
+            
+            # INICIA PENALTIS
+            penalty_view = PenaltyView(interaction.user, None, p1_profile["club_name"], p2_club_name, is_ia=True)
+            await message.edit(embed=penalty_view.get_embed(), view=penalty_view)
+            await penalty_view.wait()
+
+            if penalty_view.winner == interaction.user:
+                p1_profile["wins"] += 1
+                final_text = f"🏆 ¡Le ganaste a la máquina en penaltis, {p1_profile['club_name']}!"
+                await save_user_profile(interaction.user.id, p1_profile)
+            elif penalty_view.winner == "IA" or penalty_view.winner is None:
+                final_text = "🤖 La máquina fue superior en los penaltis."
+            
+            final_p_embed = penalty_view.get_embed()
+            final_p_embed.set_footer(text=final_text)
+            await message.edit(embed=final_p_embed, view=None)
+            
     finally:
         ACTIVE_MATCHES.discard(interaction.user.id)
 
