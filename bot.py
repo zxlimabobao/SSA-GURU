@@ -264,9 +264,14 @@ async def save_user_profile(user_id: int, data: dict):
     await db_upsert(f"user_{user_id}", data)
 
 def calculate_price(overall: int) -> int:
-    base_price = 2000000
-    multiplier = 1.15
-    return int(base_price * (multiplier ** (overall - 80)))
+    base_price = 1500000 # 1.5 milhões para over 78
+    if overall >= 78:
+        multiplier = 1.65 # Aumento muito exponencial para cima
+        precio = int(base_price * (multiplier ** (overall - 78)))
+    else:
+        multiplier = 1.35 # Queda suave de preço para baixo
+        precio = int(base_price * (multiplier ** (overall - 78)))
+    return max(100, precio)
 
 def get_random_player_name(xi_list, pos_groups):
     players = [p['name'] for p in xi_list if get_pos_group(p.get('pos', 'MC')) in pos_groups]
@@ -374,7 +379,7 @@ class ClaimView(discord.ui.View):
         super().__init__(timeout=60) # 60 segundos de inatividade
         self.user = user
         self.player = player
-        self.precio_venta = int(precio * 0.5)
+        self.precio_venta = int(precio * 0.75)
         self.processed = False
         self.message = None 
 
@@ -662,7 +667,7 @@ async def sell(interaction: discord.Interaction, nombre_jugador: str):
         return await interaction.response.send_message("❌ No posees a ese jugador.", ephemeral=True)
         
     target_player = matches[0]
-    precio_venta = int(calculate_price(target_player["over"]) * 0.5)
+    precio_venta = int(calculate_price(target_player["over"]) * 0.75)
     
     user_profile["inventory"].remove(target_player)
     user_profile["starting_xi"] = [p for p in user_profile["starting_xi"] if p["id"] != target_player["id"]]
@@ -1186,11 +1191,9 @@ async def ia_match(interaction: discord.Interaction):
     
     try:
         p1_fuerza = sum(p["over"] for p in p1_xi)
-        # Oponente IA tem força parecida com o jogador
         p2_fuerza = max(100, p1_fuerza + random.randint(-20, 20))
         p2_club_name = "🤖 SSA Bot IA"
         
-        # Gera 11 jogadores genéricos para a IA baseados na força média
         media_ia = p2_fuerza // 11
         p2_xi = [{"name": f"Bot {pos}", "pos": pos, "over": media_ia} for pos in ["PO", "DFC", "DFC", "DFC", "DFC", "MID", "MID", "MID", "DC", "DC", "DC"]]
         
@@ -1267,7 +1270,6 @@ async def ia_match(interaction: discord.Interaction):
         resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_club_name}**"
         final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
         
-        # Contra a IA, vitória dá pontos, mas derrota não tira
         if p1_goles > p2_goles:
             p1_profile["wins"] += 1
             final_embed.set_footer(text=f"🏆 ¡Le ganaste a la máquina, {p1_profile['club_name']}!")
