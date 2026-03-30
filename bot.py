@@ -36,6 +36,8 @@ bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)
 bot_locked = False
 ACTIVE_MATCHES = set() # Trava global para impedir múltiplas partidas simultâneas
 
+ADMIN_GUILD_ID = 1477755013416878171 # ID do servidor onde os comandos de admin vão funcionar
+
 # ==========================================
 # SISTEMA DE KEEP-ALIVE PARA O RENDER
 # ==========================================
@@ -290,6 +292,14 @@ def is_not_locked():
         return True
     return app_commands.check(predicate)
 
+def is_in_admin_guild():
+    async def predicate(interaction: discord.Interaction):
+        if interaction.guild_id != ADMIN_GUILD_ID:
+            await interaction.response.send_message("❌ **Acesso Negado:** Este comando administrativo só pode ser executado no servidor oficial autorizado.", ephemeral=True)
+            return False
+        return True
+    return app_commands.check(predicate)
+
 class PaginatorView(discord.ui.View):
     def __init__(self, pages):
         super().__init__(timeout=60)
@@ -379,7 +389,7 @@ class ClaimView(discord.ui.View):
         super().__init__(timeout=60) # 60 segundos de inatividade
         self.user = user
         self.player = player
-        self.precio_venta = int(precio * 0.75)
+        self.precio_venta = int(precio * 0.20) # Alterado de 0.75 para 0.20
         self.processed = False
         self.message = None 
 
@@ -667,7 +677,7 @@ async def sell(interaction: discord.Interaction, nombre_jugador: str):
         return await interaction.response.send_message("❌ No posees a ese jugador.", ephemeral=True)
         
     target_player = matches[0]
-    precio_venta = int(calculate_price(target_player["over"]) * 0.75)
+    precio_venta = int(calculate_price(target_player["over"]) * 0.20) # Alterado de 0.75 para 0.20
     
     user_profile["inventory"].remove(target_player)
     user_profile["starting_xi"] = [p for p in user_profile["starting_xi"] if p["id"] != target_player["id"]]
@@ -1333,6 +1343,7 @@ async def ranking(interaction: discord.Interaction):
 @bot.tree.command(name="bulkadd", description="Admin: Añade múltiples jugadores subiendo un archivo .txt.")
 @app_commands.describe(archivo="Archivo .txt con formato: Nick OVR POS LINK (uno por línea)")
 @app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
 async def bulkadd(interaction: discord.Interaction, archivo: discord.Attachment):
     await interaction.response.defer(ephemeral=True)
     
@@ -1381,6 +1392,7 @@ async def bulkadd(interaction: discord.Interaction, archivo: discord.Attachment)
 
 @bot.tree.command(name="addplayer", description="Admin: Añade un jugador (URL o Archivo adjunto).")
 @app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
 async def addplayer(interaction: discord.Interaction, nick: str, over: int, posicion: str, url_imagen: str = None, imagem_anexada: discord.Attachment = None):
     posiciones = ["PO", "DFC", "MCD", "MC", "MCO", "DC"]
     if posicion.upper() not in posiciones:
@@ -1402,6 +1414,7 @@ async def addplayer(interaction: discord.Interaction, nick: str, over: int, posi
 
 @bot.tree.command(name="editplayer", description="Admin: Edita un jugador existente (Sincroniza globalmente).")
 @app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
 async def editplayer(interaction: discord.Interaction, nombre: str, nuevo_over: int = None, nueva_pos: str = None, url_imagen: str = None, imagem_anexada: discord.Attachment = None):
     await interaction.response.defer(ephemeral=True)
     players = await get_all_players()
@@ -1460,6 +1473,7 @@ async def editplayer(interaction: discord.Interaction, nombre: str, nuevo_over: 
 
 @bot.tree.command(name="delplayer", description="Admin: Elimina un jugador permanentemente de todo el sistema.")
 @app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
 async def delplayer(interaction: discord.Interaction, nombre: str):
     await interaction.response.defer(ephemeral=True)
     players = await get_all_players()
@@ -1507,6 +1521,7 @@ async def delplayer(interaction: discord.Interaction, nombre: str):
 
 @bot.tree.command(name="lock", description="Admin: Bloquea comandos.")
 @app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
 async def lock(interaction: discord.Interaction):
     global bot_locked
     bot_locked = True
@@ -1514,6 +1529,7 @@ async def lock(interaction: discord.Interaction):
 
 @bot.tree.command(name="unlock", description="Admin: Desbloquea comandos.")
 @app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
 async def unlock(interaction: discord.Interaction):
     global bot_locked
     bot_locked = False
@@ -1521,6 +1537,7 @@ async def unlock(interaction: discord.Interaction):
 
 @bot.tree.command(name="addmoney", description="Admin: Añade dinero.")
 @app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
 async def addmoney(interaction: discord.Interaction, usuario: discord.Member, cantidad: int):
     profile = await get_user_profile(usuario)
     profile["money"] += cantidad
@@ -1529,6 +1546,7 @@ async def addmoney(interaction: discord.Interaction, usuario: discord.Member, ca
 
 @bot.tree.command(name="removemoney", description="Admin: Quita dinero.")
 @app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
 async def removemoney(interaction: discord.Interaction, usuario: discord.Member, cantidad: int):
     profile = await get_user_profile(usuario)
     profile["money"] = max(0, profile["money"] - cantidad)
