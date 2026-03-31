@@ -460,6 +460,41 @@ class ClaimView(discord.ui.View):
         for child in self.children:
             child.disabled = True
 
+# --- SISTEMA DE SELEÇÃO DE CAPITÃO ---
+class CaptainSelect(discord.ui.Select):
+    def __init__(self, user, starting_xi):
+        self.user_obj = user
+        options = []
+        for player in starting_xi:
+            options.append(discord.SelectOption(
+                label=player['name'],
+                description=f"{player['pos']} - ⭐ {player['over']}",
+                value=player['id']
+            ))
+        super().__init__(placeholder="Elige a tu capitán...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_obj.id:
+            return await interaction.response.send_message("❌ No puedes hacer esto.", ephemeral=True)
+            
+        user_profile = await get_user_profile(interaction.user)
+        selected_id = self.values[0]
+        selected_player = next((p for p in user_profile.get("starting_xi", []) if p["id"] == selected_id), None)
+        
+        if selected_player:
+            user_profile["captain"] = selected_player["id"]
+            await save_user_profile(interaction.user.id, user_profile)
+            await interaction.response.send_message(f"👑 **{selected_player['name']}** es ahora el gran capitán de {user_profile['club_name']}!", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Jugador no encontrado en tu 11 titular.", ephemeral=True)
+
+class CaptainView(discord.ui.View):
+    def __init__(self, user, starting_xi):
+        super().__init__(timeout=60)
+        self.user = user
+        self.add_item(CaptainSelect(user, starting_xi))
+
+# --- VIEW DO TIME ---
 class TeamView(discord.ui.View):
     def __init__(self, user):
         super().__init__(timeout=120)
@@ -511,7 +546,15 @@ class TeamView(discord.ui.View):
     @discord.ui.button(label="Seleccionar Capitán", style=discord.ButtonStyle.primary, custom_id="set_captain")
     async def set_captain(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id: return await interaction.response.defer()
-        await interaction.response.send_message("👑 Usa el comando `/captain [nombre]` para definir tu capitán.", ephemeral=True)
+        
+        user_profile = await get_user_profile(self.user)
+        starting_xi = user_profile.get("starting_xi", [])
+        
+        if not starting_xi:
+            return await interaction.response.send_message("❌ Necesitas jugadores en tu 11 titular para elegir un capitán.", ephemeral=True)
+            
+        view = CaptainView(self.user, starting_xi)
+        await interaction.response.send_message("👑 **Selecciona al capitán de tu equipo:**", view=view, ephemeral=True)
 
 # ==========================================
 # EVENTOS DEL BOT
