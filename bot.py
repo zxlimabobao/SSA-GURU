@@ -42,7 +42,7 @@ ADMIN_GUILD_ID = 1477755013416878171 # ID do servidor onde os comandos de admin 
 # SISTEMA DE KEEP-ALIVE PARA O RENDER
 # ==========================================
 async def handle_web(request):
-    return web.Response(text="Bot SSA Guru está online e rodando no Render!")
+    return web.Response(text="Bot SSA Guru está online y rodando en Render!")
 
 async def start_web_server():
     app = web.Application()
@@ -130,12 +130,10 @@ async def fetch_player_image_async(session, player_id, card_url):
                 try:
                     p_img = Image.open(BytesIO(image_bytes)).convert("RGBA")
                     
-                    # OTIMIZAÇÃO DE CARTA LARGA: Remove bordas transparentes enormes
                     bbox = p_img.getbbox()
                     if bbox:
                         p_img = p_img.crop(bbox)
                         
-                    # Uso de 'thumbnail' após o crop mantém a proporção real
                     p_img.thumbnail((CARD_W, CARD_H), Image.Resampling.LANCZOS)
                     
                     if len(PLAYER_CARD_CACHE) >= MAX_CACHE_SIZE:
@@ -250,36 +248,50 @@ async def get_user_profile(user: discord.abc.User):
     user_data = await db_get(doc_id)
     if not user_data:
         default_data = {
-            "money": 0, "club_name": f"Club de {user.display_name}"[:30], "inventory": [],
+            "money": 0, "premium_coins": 0, "club_name": f"Club de {user.display_name}"[:30], "inventory": [],
             "starting_xi": [], "last_claim": 0, "last_sobre": 0,
             "wins": 0, "losses": 0, "captain": None
         }
         await db_upsert(doc_id, default_data)
         return default_data
     else:
+        # Patch data
+        if "premium_coins" not in user_data["data"]:
+            user_data["data"]["premium_coins"] = 0
         if str(user.id) in user_data["data"]["club_name"]:
             user_data["data"]["club_name"] = f"Club de {user.display_name}"[:30]
-            await db_upsert(doc_id, user_data["data"])
+        await db_upsert(doc_id, user_data["data"])
         return user_data["data"]
 
 async def save_user_profile(user_id: int, data: dict):
     await db_upsert(f"user_{user_id}", data)
 
 def calculate_price(overall: int) -> int:
-    base_price = 1500000 # 1.5 milhões para over 78
-    if overall >= 78:
-        multiplier = 1.65 # Aumento muito exponencial para cima
-        precio = int(base_price * (multiplier ** (overall - 78)))
-    else:
-        multiplier = 1.35 # Queda suave de preço para baixo
-        precio = int(base_price * (multiplier ** (overall - 78)))
-    return max(100, precio)
+    # ECONOMIA REBALANCEADA: Mais suave, 98 OVR é cerca de 130-150 milhões
+    base_price = 1500000 
+    adjusted_ovr = max(70, overall)
+    precio = int(base_price * (1.28 ** (adjusted_ovr - 80)))
+    return max(10000, precio)
 
 def get_random_player_name(xi_list, pos_groups):
     players = [p['name'] for p in xi_list if get_pos_group(p.get('pos', 'MC')) in pos_groups]
     if not players: 
         players = [p['name'] for p in xi_list]
     return random.choice(players).split()[-1] if players else "El jugador"
+
+def get_player_by_rarity(rarity, all_players):
+    """Filtra jugadores de la base de datos simulando rarezas por su media (OVR)"""
+    if rarity == "Común": pool = [p for p in all_players if p["data"]["over"] <= 76]
+    elif rarity == "Rara": pool = [p for p in all_players if 77 <= p["data"]["over"] <= 82]
+    elif rarity == "Épica": pool = [p for p in all_players if 83 <= p["data"]["over"] <= 86]
+    elif rarity == "TOTW": pool = [p for p in all_players if 87 <= p["data"]["over"] <= 89]
+    elif rarity == "TOTS": pool = [p for p in all_players if 90 <= p["data"]["over"] <= 92]
+    elif rarity == "Legendaria": pool = [p for p in all_players if p["data"]["over"] >= 93]
+    else: pool = all_players
+    
+    if not pool: # Fallback seguro
+        pool = all_players
+    return random.choice(pool)["data"]
 
 # ==========================================
 # CHECKS Y CLASES UI
@@ -383,6 +395,70 @@ class BuyView(discord.ui.View):
         if interaction.user.id != self.user.id: return await interaction.response.defer()
         self.current_index += 1
         await self.update_view(interaction)
+
+class TiendaView(discord.ui.View):
+    def __init__(self, user, all_players):
+        super().__init__(timeout=120)
+        self.user = user
+        self.all_players = all_players
+
+    async def process_purchase(self, interaction, pack_name, cost, num_cards, probs, guaranteed=None):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message("❌ Esta no es tu tienda.", ephemeral=True)
+
+        await interaction.response.defer()
+        profile = await get_user_profile(self.user)
+
+        if profile.get("premium_coins", 0) < cost:
+            return await interaction.followup.send(f"💸 No tienes suficientes **Monedas Premium**. Necesitas 💎 {cost}.", ephemeral=True)
+
+        profile["premium_coins"] -= cost
+
+        drawn_players = []
+        rarities = list(probs.keys())
+        weights = list(probs.values())
+
+        for i in range(num_cards):
+            if guaranteed and i == num_cards - 1:
+                chosen_rarity = random.choice(guaranteed)
+            else:
+                chosen_rarity = random.choices(rarities, weights=weights, k=1)[0]
+
+            player = get_player_by_rarity(chosen_rarity, self.all_players)
+            drawn_players.append((chosen_rarity, player))
+            profile["inventory"].append(player)
+
+        await save_user_profile(self.user.id, profile)
+
+        embed = discord.Embed(title=f"📦 ¡Paquete {pack_name} Abierto!", color=discord.Color.gold())
+        desc = ""
+        for rarity, p in drawn_players:
+            desc += f"**{rarity}** | ⭐ {p['over']} - {p['pos']} | **{p['name']}**\n"
+        embed.description = desc
+        embed.set_footer(text=f"Monedas Premium restantes: 💎 {profile['premium_coins']}")
+
+        await interaction.followup.send(embed=embed)
+
+    @discord.ui.button(label="Básico (20 💎)", style=discord.ButtonStyle.secondary, row=0)
+    async def buy_basico(self, interaction: discord.Interaction, button: discord.ui.Button):
+        probs = {"Común": 0.66, "Rara": 0.25, "Épica": 0.03, "TOTW": 0.03, "TOTS": 0.02, "Legendaria": 0.01}
+        await self.process_purchase(interaction, "Básico", 20, 3, probs)
+
+    @discord.ui.button(label="Estándar (50 💎)", style=discord.ButtonStyle.primary, row=0)
+    async def buy_estandar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        probs = {"Común": 0.51, "Rara": 0.35, "Épica": 0.05, "TOTW": 0.05, "TOTS": 0.02, "Legendaria": 0.02}
+        await self.process_purchase(interaction, "Estándar", 50, 5, probs)
+
+    @discord.ui.button(label="Premium (100 💎)", style=discord.ButtonStyle.success, row=1)
+    async def buy_premium(self, interaction: discord.Interaction, button: discord.ui.Button):
+        probs = {"Común": 0.36, "Rara": 0.45, "Épica": 0.07, "TOTW": 0.07, "TOTS": 0.02, "Legendaria": 0.03}
+        await self.process_purchase(interaction, "Premium", 100, 7, probs)
+
+    @discord.ui.button(label="Élite (250 💎)", style=discord.ButtonStyle.danger, row=1)
+    async def buy_elite(self, interaction: discord.Interaction, button: discord.ui.Button):
+        probs = {"Común": 0.21, "Rara": 0.50, "Épica": 0.10, "TOTW": 0.10, "TOTS": 0.04, "Legendaria": 0.05}
+        guaranteed = ["Épica", "TOTW", "TOTS", "Legendaria"]
+        await self.process_purchase(interaction, "Élite", 250, 10, probs, guaranteed)
 
 class ClaimView(discord.ui.View):
     def __init__(self, user, player, precio):
@@ -592,6 +668,7 @@ async def help_cmd(interaction: discord.Interaction):
     
     jugador_cmds = """
     `/sobre` - Abre una caja misteriosa cada 12h.
+    `/tienda` - Compra paquetes con Monedas Premium.
     `/claim` - Recluta un jugador aleatorio (10m).
     `/jugadores` - Explora el mercado global.
     `/buy` - Compra un jugador del mercado.
@@ -619,6 +696,23 @@ async def help_cmd(interaction: discord.Interaction):
     embed.set_footer(text="SSA Guru - Street Soccer All One", icon_url=interaction.user.display_avatar.url)
     await interaction.response.send_message(embed=embed)
 
+@bot.tree.command(name="tienda", description="Abre la tienda de paquetes premium.")
+@is_not_locked()
+async def tienda_cmd(interaction: discord.Interaction):
+    await interaction.response.defer()
+    all_players = await get_all_players()
+    if not all_players:
+        return await interaction.followup.send("❌ No hay jugadores en el mercado para armar paquetes.")
+    
+    embed = discord.Embed(title="🏪 Tienda Premium SSA", description="Usa tus **Monedas Premium 💎** para comprar paquetes exclusivos y mejorar tu club.", color=discord.Color.purple())
+    embed.add_field(name="📦 Paquete Básico (20 💎)", value="3 Cartas.\nChances: Común 66%, Rara 25%, Épica 3%, TOTW 3%, TOTS 2%, Legendaria 1%", inline=False)
+    embed.add_field(name="🎒 Paquete Estándar (50 💎)", value="5 Cartas.\nChances: Común 51%, Rara 35%, Épica 5%, TOTW 5%, TOTS 2%, Legendaria 2%", inline=False)
+    embed.add_field(name="🎁 Paquete Premium (100 💎)", value="7 Cartas.\nChances: Común 36%, Rara 45%, Épica 7%, TOTW 7%, TOTS 2%, Legendaria 3%", inline=False)
+    embed.add_field(name="👑 Paquete Élite (250 💎)", value="10 Cartas.\nChances: Común 21%, Rara 50%, Épica 10%, TOTW 10%, TOTS 4%, Legendaria 5%\n⚡ **¡Garantizada 1 Épica o superior!**", inline=False)
+    
+    view = TiendaView(interaction.user, all_players)
+    await interaction.followup.send(embed=embed, view=view)
+
 @bot.tree.command(name="sobre", description="Abre una caja misteriosa a cada 12 horas.")
 @is_not_locked()
 async def sobre(interaction: discord.Interaction):
@@ -632,17 +726,25 @@ async def sobre(interaction: discord.Interaction):
         return await interaction.response.send_message(f"⏳ Debes esperar **{horas}h {minutos}m** para abrir otro sobre.", ephemeral=True)
     
     caixas = ["Madera", "Hierro", "Oro", "Esmeralda", "Diamante", "SSA Icon"]
-    pesos = [40, 30, 15, 8, 5, 2]
+    # Probabilidades mejores para no venir solo cajas malas
+    pesos = [30, 25, 20, 12, 8, 5]
     obtenida = random.choices(caixas, weights=pesos, k=1)[0]
+    idx = caixas.index(obtenida)
     
-    recompensa_dinero = caixas.index(obtenida) * 50000 + random.randint(10000, 100000)
+    # Dinero mucho más grande
+    recompensa_dinero = (idx + 1) * 250000 + random.randint(100000, 500000)
+    
+    # Monedas Premium
+    premium_drops = [(1, 3), (3, 6), (6, 12), (12, 25), (25, 50), (50, 100)]
+    recompensa_premium = random.randint(premium_drops[idx][0], premium_drops[idx][1])
     
     profile["money"] += recompensa_dinero
+    profile["premium_coins"] = profile.get("premium_coins", 0) + recompensa_premium
     profile["last_sobre"] = now
     await save_user_profile(interaction.user.id, profile)
     
     embed = discord.Embed(title="🎁 ¡Caja Misteriosa Abierta!", description=f"Has abierto una caja de **{obtenida}**.", color=discord.Color.brand_green())
-    embed.add_field(name="Recompensa", value=f"💰 **${recompensa_dinero:,}** añadidos a tu saldo.")
+    embed.add_field(name="Recompensas", value=f"💰 **${recompensa_dinero:,}**\n💎 **{recompensa_premium} Monedas Premium**")
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="economia", description="Muestra el saldo y estado financiero de tu club.")
@@ -653,6 +755,7 @@ async def economia(interaction: discord.Interaction, usuario: discord.Member = N
     
     embed = discord.Embed(title=f"🏦 Economía de {profile['club_name']}", color=discord.Color.gold())
     embed.add_field(name="Saldo Actual", value=f"💰 **${profile['money']:,}**", inline=False)
+    embed.add_field(name="Monedas Premium", value=f"💎 **{profile.get('premium_coins', 0):,}**", inline=False)
     embed.add_field(name="Manager", value=target.mention, inline=False)
     embed.set_thumbnail(url=target.display_avatar.url)
     await interaction.response.send_message(embed=embed)
