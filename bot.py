@@ -36,7 +36,7 @@ bot = commands.Bot(command_prefix="/", intents=intents, help_command=None)
 bot_locked = False
 ACTIVE_MATCHES = set() # Trava global para impedir múltiplas partidas simultâneas
 
-ADMIN_GUILD_ID = 1477755013416878171 # ID do servidor onde os comandos de admin vão funcionar
+ADMIN_GUILD_ID = 1477755013416878171 # ID do servidor onde los comandos de admin van a funcionar
 
 # ==========================================
 # SISTEMA DE KEEP-ALIVE PARA O RENDER
@@ -55,7 +55,7 @@ async def start_web_server():
     print(f"🌐 Servidor web fantasma rodando na porta {port} para o Render.")
 
 # ==========================================
-# OTIMIZAÇÃO: GESTÃO DE RECURSOS E CACHE (500MB RAM SAFE)
+# OTIMIZAÇÃO: GESTÃO DE RECURSOS E CACHE
 # ==========================================
 IMAGE_WIDTH, IMAGE_HEIGHT = 1400, 2100 
 CARD_W, CARD_H = 260, 390 
@@ -66,17 +66,53 @@ PLAYER_CARD_CACHE = {}
 MAX_CACHE_SIZE = 100 
 HTTP_SESSION = None 
 
-TACTICAL_COORDINATES = [
-    {"group": "PO",  "pos": (700, 1800)},
-    {"group": "DFC", "pos": (190, 1350)}, {"group": "DFC", "pos": (530, 1350)}, {"group": "DFC", "pos": (870, 1350)}, {"group": "DFC", "pos": (1210, 1350)},
-    {"group": "MID", "pos": (275, 900)},  {"group": "MID", "pos": (700, 900)},  {"group": "MID", "pos": (1125, 900)},
-    {"group": "DC",  "pos": (275, 450)},  {"group": "DC",  "pos": (700, 450)},  {"group": "DC",  "pos": (1125, 450)}
-]
+# --- MOTOR TÁTICO DINÁMICO (16 FORMACIONES) ---
+def get_formation_coords(formation):
+    x1 = [700]
+    x2 = [400, 1000]
+    x3 = [275, 700, 1125]
+    x4 = [190, 530, 870, 1210]
+    x5 = [150, 425, 700, 975, 1250]
+    x6 = [120, 352, 584, 816, 1048, 1280]
+    
+    def build_coords(def_x, mid1_x, mid1_y, mid2_x, mid2_y, att_x):
+        coords = [{"group": "PO", "pos": (700, 1800)}]
+        for x in def_x: coords.append({"group": "DFC", "pos": (x, 1350)})
+        if mid1_x:
+            for x in mid1_x: coords.append({"group": "MID", "pos": (x, mid1_y)})
+        if mid2_x:
+            for x in mid2_x: coords.append({"group": "MID", "pos": (x, mid2_y)})
+        if att_x:
+            for x in att_x: coords.append({"group": "DC", "pos": (x, 450)})
+        return coords
+
+    formations = {
+        "4-3-3": build_coords(x4, x3, 900, [], 0, x3),
+        "4-4-2": build_coords(x4, x4, 900, [], 0, x2),
+        "4-2-3-1": build_coords(x4, x2, 1100, x3, 750, x1),
+        "3-5-2": build_coords(x3, x5, 900, [], 0, x2),
+        "3-4-3": build_coords(x3, x4, 900, [], 0, x3),
+        "5-3-2": build_coords(x5, x3, 900, [], 0, x2),
+        "5-4-1": build_coords(x5, x4, 900, [], 0, x1),
+        "4-1-4-1": build_coords(x4, x1, 1150, x4, 800, x1),
+        "4-2-2-2": build_coords(x4, x2, 1050, x2, 750, x2),
+        "3-6-1": build_coords(x3, x6, 900, [], 0, x1),
+        "4-3-2-1": build_coords(x4, x3, 1000, x2, 700, x1),
+        "4-5-1": build_coords(x4, x5, 900, [], 0, x1),
+        "3-4-2-1": build_coords(x3, x4, 1050, x2, 750, x1),
+        "5-2-3": build_coords(x5, x2, 900, [], 0, x3),
+        "4-3-1-2": build_coords(x4, x3, 1050, x1, 750, x2),
+        "4-6-0": build_coords(x4, x6, 850, [], 0, [])
+    }
+    return formations.get(formation, formations["4-3-3"])
 
 def get_pos_group(pos):
     pos = pos.upper()
-    if pos in ["MC", "MCO", "MCD"]: return "MID"
-    return pos
+    if pos in ["MC", "MCO", "MCD", "MI", "MD", "VOL"]: return "MID"
+    if pos in ["DFC", "CB", "ZAG", "LD", "LE", "LTI", "LTD", "LI"]: return "DFC"
+    if pos in ["DC", "ST", "CA", "EI", "ED", "PE", "PD", "EXT"]: return "DC"
+    if pos in ["PO", "GK", "GOL"]: return "PO"
+    return "MID" # Fallback por si hay un error tipográfico
 
 def get_renogare_font_cached(size):
     if size in CACHED_FONTS:
@@ -129,7 +165,6 @@ async def fetch_player_image_async(session, player_id, card_url):
             def process_image():
                 try:
                     p_img = Image.open(BytesIO(image_bytes)).convert("RGBA")
-                    
                     bbox = p_img.getbbox()
                     if bbox:
                         p_img = p_img.crop(bbox)
@@ -149,7 +184,7 @@ async def fetch_player_image_async(session, player_id, card_url):
     except Exception:
         return None
 
-def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_total, processed_cards_map):
+def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_total, processed_cards_map, formation):
     width, height = IMAGE_WIDTH, IMAGE_HEIGHT
     temp_img = BASE_FIELD_IMAGE.copy()
     draw = ImageDraw.Draw(temp_img, "RGBA")
@@ -158,7 +193,9 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
     metrics_font = get_renogare_font_cached(48)
     plus_font = get_renogare_font_cached(100)
 
-    for i, slot in enumerate(TACTICAL_COORDINATES):
+    tactical_coords = get_formation_coords(formation)
+
+    for i, slot in enumerate(tactical_coords):
         cx, cy = slot["pos"]
         player = filled_slots[i]
         p_img = None
@@ -175,7 +212,7 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
             draw.rounded_rectangle([x1, y1, x2, y2], radius=20, fill=(30, 30, 30, 180), outline="#666666", width=5)
             draw.text((cx, cy), "+", font=plus_font, fill="#888888", anchor="mm")
 
-    draw.text((width//2, 75), f"[{club_sigla}] {club_name.upper()}", font=title_font, fill="#f1c40f", anchor="mm")
+    draw.text((width//2, 75), f"[{club_sigla}] {club_name.upper()} | {formation}", font=title_font, fill="#f1c40f", anchor="mm")
     money_text = f"💰 ${money:,}"
     draw.text((40, height - 60), money_text, font=metrics_font, fill="white", anchor="lm")
     over_text = f"⭐ Over Total: {overall_total}"
@@ -186,12 +223,13 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
     buffer.seek(0)
     return buffer
 
-async def optimized_generate_pitch_image(xi_players, club_name, club_sigla, money, overall_total):
-    filled_slots = [None] * 11
+async def optimized_generate_pitch_image(xi_players, club_name, club_sigla, money, overall_total, formation):
+    tactical_coords = get_formation_coords(formation)
+    filled_slots = [None] * len(tactical_coords)
     used_ids = set()
     needed_images_tasks = []
 
-    for i, slot in enumerate(TACTICAL_COORDINATES):
+    for i, slot in enumerate(tactical_coords):
         found_player = None
         for player in xi_players:
             if player["id"] in used_ids: continue
@@ -210,7 +248,7 @@ async def optimized_generate_pitch_image(xi_players, club_name, club_sigla, mone
     
     processed_cards_map = {p_id: p_img for p_id, p_img in zip(ids_to_process, processed_results)}
 
-    return await asyncio.to_thread(compile_team_image_sync, filled_slots, club_name, club_sigla, money, overall_total, processed_cards_map)
+    return await asyncio.to_thread(compile_team_image_sync, filled_slots, club_name, club_sigla, money, overall_total, processed_cards_map, formation)
 
 # ==========================================
 # FUNCIONES AUXILIARES BASE DE DATOS
@@ -250,28 +288,47 @@ async def get_user_profile(user: discord.abc.User):
         default_data = {
             "money": 0, "premium_coins": 0, "club_name": f"Club de {user.display_name}"[:30], "inventory": [],
             "starting_xi": [], "last_claim": 0, "last_sobre": 0,
-            "wins": 0, "losses": 0, "captain": None
+            "wins": 0, "losses": 0, "captain": None, "formation": "4-3-3"
         }
         await db_upsert(doc_id, default_data)
         return default_data
     else:
         # Patch data
+        needs_update = False
         if "premium_coins" not in user_data["data"]:
             user_data["data"]["premium_coins"] = 0
+            needs_update = True
+        if "formation" not in user_data["data"]:
+            user_data["data"]["formation"] = "4-3-3"
+            needs_update = True
         if str(user.id) in user_data["data"]["club_name"]:
             user_data["data"]["club_name"] = f"Club de {user.display_name}"[:30]
-        await db_upsert(doc_id, user_data["data"])
+            needs_update = True
+            
+        if needs_update:
+            await db_upsert(doc_id, user_data["data"])
         return user_data["data"]
 
 async def save_user_profile(user_id: int, data: dict):
     await db_upsert(f"user_{user_id}", data)
 
 def calculate_price(overall: int) -> int:
-    # ECONOMIA REBALANCEADA: Mais suave, 98 OVR é cerca de 130-150 milhões
-    base_price = 1500000 
-    adjusted_ovr = max(70, overall)
-    precio = int(base_price * (1.28 ** (adjusted_ovr - 80)))
-    return max(10000, precio)
+    """Calcula el precio del jugador según la tabla oficial exacta."""
+    precios = {
+        78: 3_000_000, 79: 3_000_000, 80: 10_000_000, 81: 30_000_000,
+        82: 50_000_000, 83: 80_000_000, 84: 100_000_000, 85: 120_000_000,
+        86: 150_000_000, 87: 190_000_000, 88: 200_000_000, 89: 230_000_000,
+        90: 300_000_000, 91: 350_000_000, 92: 400_000_000, 93: 500_000_000,
+        94: 560_000_000, 95: 600_000_000, 96: 780_000_000, 97: 880_000_000,
+        98: 940_000_000, 99: 1_200_000_000
+    }
+    
+    if overall >= 99: return 1_200_000_000
+    elif overall in precios: return precios[overall]
+    else:
+        # Para jugadores < 78, bajamos el precio poco a poco
+        precio_menor = 3000000 - ((78 - overall) * 500000)
+        return max(100000, precio_menor)
 
 def get_random_player_name(xi_list, pos_groups):
     players = [p['name'] for p in xi_list if get_pos_group(p.get('pos', 'MC')) in pos_groups]
@@ -280,7 +337,7 @@ def get_random_player_name(xi_list, pos_groups):
     return random.choice(players).split()[-1] if players else "El jugador"
 
 def get_player_by_rarity(rarity, all_players):
-    """Filtra jugadores de la base de datos simulando rarezas por su media (OVR)"""
+    """Filtra jugadores simulando rarezas por su media (OVR)"""
     if rarity == "Común": pool = [p for p in all_players if p["data"]["over"] <= 76]
     elif rarity == "Rara": pool = [p for p in all_players if 77 <= p["data"]["over"] <= 82]
     elif rarity == "Épica": pool = [p for p in all_players if 83 <= p["data"]["over"] <= 86]
@@ -289,8 +346,7 @@ def get_player_by_rarity(rarity, all_players):
     elif rarity == "Legendaria": pool = [p for p in all_players if p["data"]["over"] >= 93]
     else: pool = all_players
     
-    if not pool: # Fallback seguro
-        pool = all_players
+    if not pool: pool = all_players
     return random.choice(pool)["data"]
 
 # ==========================================
@@ -462,10 +518,10 @@ class TiendaView(discord.ui.View):
 
 class ClaimView(discord.ui.View):
     def __init__(self, user, player, precio):
-        super().__init__(timeout=60) # 60 segundos de inatividade
+        super().__init__(timeout=60) 
         self.user = user
         self.player = player
-        self.precio_venta = int(precio * 0.20) # Alterado de 0.75 para 0.20
+        self.precio_venta = int(precio * 0.20) 
         self.processed = False
         self.message = None 
 
@@ -536,6 +592,42 @@ class ClaimView(discord.ui.View):
         for child in self.children:
             child.disabled = True
 
+# --- SELECT DE FORMACIÓN ---
+class FormationSelect(discord.ui.Select):
+    def __init__(self, user):
+        self.user_obj = user
+        options = [
+            discord.SelectOption(label="4-3-3", value="4-3-3"),
+            discord.SelectOption(label="4-4-2", value="4-4-2"),
+            discord.SelectOption(label="4-2-3-1", value="4-2-3-1"),
+            discord.SelectOption(label="3-5-2", value="3-5-2"),
+            discord.SelectOption(label="3-4-3", value="3-4-3"),
+            discord.SelectOption(label="5-3-2", value="5-3-2"),
+            discord.SelectOption(label="5-4-1", value="5-4-1"),
+            discord.SelectOption(label="4-1-4-1", value="4-1-4-1"),
+            discord.SelectOption(label="4-2-2-2", value="4-2-2-2"),
+            discord.SelectOption(label="3-6-1", value="3-6-1"),
+            discord.SelectOption(label="4-3-2-1", value="4-3-2-1"),
+            discord.SelectOption(label="4-5-1", value="4-5-1"),
+            discord.SelectOption(label="3-4-2-1", value="3-4-2-1"),
+            discord.SelectOption(label="5-2-3", value="5-2-3"),
+            discord.SelectOption(label="4-3-1-2", value="4-3-1-2"),
+            discord.SelectOption(label="4-6-0", value="4-6-0")
+        ]
+        super().__init__(placeholder="📋 Cambiar Formación...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_obj.id:
+            return await interaction.response.send_message("❌ No puedes hacer esto.", ephemeral=True)
+            
+        await interaction.response.defer()
+        user_profile = await get_user_profile(self.user_obj)
+        user_profile["formation"] = self.values[0]
+        user_profile["starting_xi"] = [] # Vacía el 11 para que no queden bugueados en la nueva formación
+        await save_user_profile(self.user_obj.id, user_profile)
+        
+        await self.view.refresh_board(interaction, f"✅ Formación cambiada a **{self.values[0]}**. El equipo ha sido vaciado para evitar errores, usa el botón de 'Auto Escalar'.")
+
 # --- SISTEMA DE SELEÇÃO DE CAPITÃO ---
 class CaptainSelect(discord.ui.Select):
     def __init__(self, user, starting_xi):
@@ -575,8 +667,27 @@ class TeamView(discord.ui.View):
     def __init__(self, user):
         super().__init__(timeout=120)
         self.user = user
+        self.add_item(FormationSelect(user))
 
-    @discord.ui.button(label="Auto Escalar (4-3-3)", style=discord.ButtonStyle.success, custom_id="auto_squad")
+    async def refresh_board(self, interaction, content_msg=""):
+        user_profile = await get_user_profile(self.user)
+        formation = user_profile.get("formation", "4-3-3")
+        sigla = user_profile['club_name'][:3].upper()
+        money = user_profile['money']
+        overall_total = sum(p["over"] for p in user_profile.get("starting_xi", []))
+        
+        image_bytes = await optimized_generate_pitch_image(user_profile.get("starting_xi", []), user_profile["club_name"], sigla, money, overall_total, formation)
+        file = discord.File(image_bytes, filename="pitch.png")
+        
+        embed = discord.Embed(title=f"🏟️ Prancheta Tática: {user_profile['club_name']}", color=discord.Color.dark_green())
+        embed.add_field(name="Rating del Equipo (SOMA)", value=f"⭐ {overall_total}", inline=True)
+        embed.add_field(name="Formación", value=formation, inline=True)
+        embed.add_field(name="Dinero del Club", value=f"💰 ${money:,}", inline=False)
+        embed.set_image(url="attachment://pitch.png")
+        
+        await interaction.edit_original_response(content=content_msg, embed=embed, attachments=[file], view=self)
+
+    @discord.ui.button(label="Auto Escalar", style=discord.ButtonStyle.success, custom_id="auto_squad")
     async def auto_squad(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id:
             return await interaction.response.send_message("No puedes gestionar este equipo.", ephemeral=True)
@@ -584,9 +695,15 @@ class TeamView(discord.ui.View):
         await interaction.response.defer()
         
         user_profile = await get_user_profile(self.user)
-        inventory = sorted(user_profile["inventory"], key=lambda x: x["over"], reverse=True)
+        inventory = sorted(user_profile.get("inventory", []), key=lambda x: x["over"], reverse=True)
+        formation = user_profile.get("formation", "4-3-3")
         
-        needs = {"PO": 1, "DFC": 4, "MID": 3, "DC": 3}
+        tactical_coords = get_formation_coords(formation)
+        
+        needs = {"PO": 0, "DFC": 0, "MID": 0, "DC": 0}
+        for slot in tactical_coords:
+            needs[slot["group"]] += 1
+            
         new_xi = []
         used_ids = set()
         
@@ -603,21 +720,7 @@ class TeamView(discord.ui.View):
         user_profile["starting_xi"] = new_xi
         await save_user_profile(self.user.id, user_profile)
         
-        sigla = user_profile['club_name'][:3].upper()
-        money = user_profile['money']
-        overall_total = sum(p["over"] for p in new_xi)
-        
-        image_bytes = await optimized_generate_pitch_image(new_xi, user_profile["club_name"], sigla, money, overall_total)
-        file = discord.File(image_bytes, filename="pitch.png")
-        
-        embed = discord.Embed(title=f"🏟️ Prancheta Tática: {user_profile['club_name']}", color=discord.Color.dark_green())
-        embed.add_field(name="Rating del Equipo (SOMA)", value=f"⭐ {overall_total}", inline=True)
-        embed.add_field(name="Formación", value="4-3-3 (Dinámico)", inline=True)
-        embed.add_field(name="Dinero del Club", value=f"💰 ${money:,}", inline=False)
-        embed.set_image(url="attachment://pitch.png")
-        
-        await interaction.edit_original_response(embed=embed, attachments=[file], view=self)
-        await interaction.followup.send("✅ **Alineación automática aplicada con éxito.**", ephemeral=True)
+        await self.refresh_board(interaction, "✅ **Alineación automática aplicada con éxito.**")
 
     @discord.ui.button(label="Seleccionar Capitán", style=discord.ButtonStyle.primary, custom_id="set_captain")
     async def set_captain(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -726,15 +829,11 @@ async def sobre(interaction: discord.Interaction):
         return await interaction.response.send_message(f"⏳ Debes esperar **{horas}h {minutos}m** para abrir otro sobre.", ephemeral=True)
     
     caixas = ["Madera", "Hierro", "Oro", "Esmeralda", "Diamante", "SSA Icon"]
-    # Probabilidades mejores para no venir solo cajas malas
     pesos = [30, 25, 20, 12, 8, 5]
     obtenida = random.choices(caixas, weights=pesos, k=1)[0]
     idx = caixas.index(obtenida)
     
-    # Dinero mucho más grande
     recompensa_dinero = (idx + 1) * 250000 + random.randint(100000, 500000)
-    
-    # Monedas Premium
     premium_drops = [(1, 3), (3, 6), (6, 12), (12, 25), (25, 50), (50, 100)]
     recompensa_premium = random.randint(premium_drops[idx][0], premium_drops[idx][1])
     
@@ -823,7 +922,7 @@ async def sell(interaction: discord.Interaction, nombre_jugador: str):
         return await interaction.response.send_message("❌ No posees a ese jugador.", ephemeral=True)
         
     target_player = matches[0]
-    precio_venta = int(calculate_price(target_player["over"]) * 0.20) # Alterado de 0.75 para 0.20
+    precio_venta = int(calculate_price(target_player["over"]) * 0.20) 
     
     user_profile["inventory"].remove(target_player)
     user_profile["starting_xi"] = [p for p in user_profile["starting_xi"] if p["id"] != target_player["id"]]
@@ -911,8 +1010,9 @@ async def jugadores(interaction: discord.Interaction):
 async def team(interaction: discord.Interaction):
     await interaction.response.defer()
     profile = await get_user_profile(interaction.user)
+    formation = profile.get("formation", "4-3-3")
     
-    if not profile["starting_xi"]:
+    if not profile.get("starting_xi"):
         embed = discord.Embed(title=f"🏟️ Equipo: {profile['club_name']}", description="Aún no tienes un 11 inicial configurado.", color=discord.Color.red())
         view = TeamView(interaction.user)
         return await interaction.followup.send(embed=embed, view=view)
@@ -922,12 +1022,12 @@ async def team(interaction: discord.Interaction):
     
     overall_total = sum(p["over"] for p in profile["starting_xi"]) if profile["starting_xi"] else 0
     
-    image_buffer = await optimized_generate_pitch_image(profile["starting_xi"], profile["club_name"], sigla, money, overall_total)
+    image_buffer = await optimized_generate_pitch_image(profile["starting_xi"], profile["club_name"], sigla, money, overall_total, formation)
     file = discord.File(image_buffer, filename="pitch.png")
     
     embed = discord.Embed(title=f"🏟️ Prancheta Tática: {profile['club_name']}", color=discord.Color.dark_green())
     embed.add_field(name="Rating del Equipo (SOMA)", value=f"⭐ {overall_total}", inline=True)
-    embed.add_field(name="Formación", value="4-3-3 (Dinámico)", inline=True)
+    embed.add_field(name="Formación", value=formation, inline=True)
     embed.add_field(name="Dinero del Club", value=f"💰 ${money:,}", inline=False)
     embed.set_image(url="attachment://pitch.png")
     
@@ -949,7 +1049,7 @@ async def nameclub(interaction: discord.Interaction, nombre: str):
 @is_not_locked()
 async def playersinicial(interaction: discord.Interaction):
     profile = await get_user_profile(interaction.user)
-    xi = profile["starting_xi"]
+    xi = profile.get("starting_xi", [])
     if not xi: return await interaction.response.send_message("Tu 11 inicial está vacío.", ephemeral=True)
     desc = "\n".join([f"**{p['name']}** - {p['pos']} (⭐ {p['over']})" for p in xi])
     embed = discord.Embed(title=f"⚽ 11 Titular de {profile['club_name']}", description=desc, color=discord.Color.orange())
@@ -959,14 +1059,17 @@ async def playersinicial(interaction: discord.Interaction):
 @is_not_locked()
 async def addplayerinicial(interaction: discord.Interaction, nombre: str):
     profile = await get_user_profile(interaction.user)
-    if len(profile["starting_xi"]) >= 11:
+    if len(profile.get("starting_xi", [])) >= 11:
         return await interaction.response.send_message("❌ Tu 11 inicial ya está lleno (11 jugadores).", ephemeral=True)
-    matches = [p for p in profile["inventory"] if nombre.lower() in p["name"].lower()]
+    matches = [p for p in profile.get("inventory", []) if nombre.lower() in p["name"].lower()]
     if not matches:
         return await interaction.response.send_message("❌ No tienes ese jugador.", ephemeral=True)
     target = matches[0]
-    if any(p["id"] == target["id"] for p in profile["starting_xi"]):
+    if any(p["id"] == target["id"] for p in profile.get("starting_xi", [])):
         return await interaction.response.send_message("❌ Ya está en el 11 titular.", ephemeral=True)
+    
+    if "starting_xi" not in profile:
+        profile["starting_xi"] = []
     profile["starting_xi"].append(target)
     await save_user_profile(interaction.user.id, profile)
     await interaction.response.send_message(f"✅ **{target['name']}** ha sido añadido al 11 titular.", ephemeral=True)
@@ -975,11 +1078,11 @@ async def addplayerinicial(interaction: discord.Interaction, nombre: str):
 @is_not_locked()
 async def onceinicial(interaction: discord.Interaction, nombre: str):
     profile = await get_user_profile(interaction.user)
-    matches = [p for p in profile["starting_xi"] if nombre.lower() in p["name"].lower()]
+    matches = [p for p in profile.get("starting_xi", []) if nombre.lower() in p["name"].lower()]
     if not matches:
         return await interaction.response.send_message("❌ Ese jugador no está en tu 11 titular.", ephemeral=True)
     target = matches[0]
-    profile["starting_xi"] = [p for p in profile["starting_xi"] if p["id"] != target["id"]]
+    profile["starting_xi"] = [p for p in profile.get("starting_xi", []) if p["id"] != target["id"]]
     await save_user_profile(interaction.user.id, profile)
     await interaction.response.send_message(f"⬇️ **{target['name']}** ha sido enviado al banquillo.", ephemeral=True)
 
@@ -1022,8 +1125,8 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
     p1_profile = await get_user_profile(interaction.user)
     p2_profile = await get_user_profile(rival)
     
-    p1_xi = p1_profile["starting_xi"]
-    p2_xi = p2_profile["starting_xi"]
+    p1_xi = p1_profile.get("starting_xi", [])
+    p2_xi = p2_profile.get("starting_xi", [])
     
     if len(p1_xi) < 11:
         return await interaction.response.send_message("❌ Tu equipo NO está completo. Necesitas 11 titulares.", ephemeral=True)
@@ -1163,7 +1266,7 @@ async def ia_match(interaction: discord.Interaction):
         return await interaction.response.send_message("❌ Ya estás en un partido.", ephemeral=True)
         
     p1_profile = await get_user_profile(interaction.user)
-    p1_xi = p1_profile["starting_xi"]
+    p1_xi = p1_profile.get("starting_xi", [])
     
     if len(p1_xi) < 11:
         return await interaction.response.send_message("❌ Tu equipo NO está completo. Necesitas 11 titulares.", ephemeral=True)
@@ -1438,14 +1541,11 @@ async def delplayer(interaction: discord.Interaction, nombre: str):
     player_id_del = player_data["id"]
     player_name = player_data["name"]
     
-    # 1. Deleta do banco global
     await db_delete(player_id_del)
     
-    # 2. Limpa o cache de RAM
     if player_id_del in PLAYER_CARD_CACHE:
         del PLAYER_CARD_CACHE[player_id_del]
         
-    # 3. Vassoura Global: Remove do inventário e time titular de TODOS
     users = await get_all_users()
     updated_users = 0
     
