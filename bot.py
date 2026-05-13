@@ -234,10 +234,6 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
 
         if p_img:
             img_w, img_h = p_img.size
-            draw.rectangle(
-                [cx - img_w//2 + 8, cy - img_h//2 + 8, cx + img_w//2 + 8, cy + img_h//2 + 8],
-                fill=(0, 0, 0, 120)
-            )
             temp_img.paste(p_img, (int(cx - img_w//2), int(cy - img_h//2)), p_img)
         else:
             x1, y1 = int(cx - CARD_W//2), int(cy - CARD_H//2)
