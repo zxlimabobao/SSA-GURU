@@ -24,7 +24,10 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 if not all([DISCORD_TOKEN, SUPABASE_URL, SUPABASE_KEY]):
-    raise ValueError("❌ Faltan credenciales. Asegúrate de configurar tu archivo .env con DISCORD_TOKEN, SUPABASE_URL y SUPABASE_KEY.")
+    raise ValueError(
+        "❌ Faltan credenciales. Asegúrate de configurar tu archivo .env "
+        "con DISCORD_TOKEN, SUPABASE_URL y SUPABASE_KEY."
+    )
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -146,9 +149,15 @@ def draw_base_field():
     # Línea central
     draw.line([40, height//2, width-40, height//2], fill=line_color, width=lw)
     # Círculo central
-    draw.ellipse([width//2 - 180, height//2 - 180, width//2 + 180, height//2 + 180], outline=line_color, width=lw)
+    draw.ellipse(
+        [width//2 - 180, height//2 - 180, width//2 + 180, height//2 + 180],
+        outline=line_color, width=lw
+    )
     # Punto central
-    draw.ellipse([width//2 - 12, height//2 - 12, width//2 + 12, height//2 + 12], fill=line_color)
+    draw.ellipse(
+        [width//2 - 12, height//2 - 12, width//2 + 12, height//2 + 12],
+        fill=line_color
+    )
     
     # Áreas grandes
     draw.rectangle([320, 40, width-320, 350], outline=line_color, width=lw)
@@ -237,7 +246,10 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
         if p_img:
             img_w, img_h = p_img.size
             # Sombra para dar profundidad a las cartas
-            draw.rectangle([cx - img_w//2 + 8, cy - img_h//2 + 8, cx + img_w//2 + 8, cy + img_h//2 + 8], fill=(0, 0, 0, 120))
+            draw.rectangle(
+                [cx - img_w//2 + 8, cy - img_h//2 + 8, cx + img_w//2 + 8, cy + img_h//2 + 8],
+                fill=(0, 0, 0, 120)
+            )
             temp_img.paste(p_img, (int(cx - img_w//2), int(cy - img_h//2)), p_img)
         else:
             x1, y1 = int(cx - CARD_W//2), int(cy - CARD_H//2)
@@ -245,9 +257,12 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
             draw.rounded_rectangle([x1, y1, x2, y2], radius=25, fill=(20, 20, 20, 200), outline="#ffd700", width=6)
             draw.text((cx, cy), "+", font=plus_font, fill="#aaaaaa", anchor="mm")
 
-    draw.text((width//2, 75), f"[{club_sigla}] {club_name.upper()} | {formation}", font=title_font, fill="#f1c40f", anchor="mm")
+    top_text = f"[{club_sigla}] {club_name.upper()} | {formation}"
+    draw.text((width//2, 75), top_text, font=title_font, fill="#f1c40f", anchor="mm")
+    
     money_text = f"💰 ${money:,}"
     draw.text((40, height - 60), money_text, font=metrics_font, fill="white", anchor="lm")
+    
     over_text = f"⭐ Over Total: {overall_total}"
     draw.text((width - 40, height - 60), over_text, font=metrics_font, fill="white", anchor="rm")
     
@@ -281,7 +296,16 @@ async def optimized_generate_pitch_image(xi_players, club_name, club_sigla, mone
     
     processed_cards_map = {p_id: p_img for p_id, p_img in zip(ids_to_process, processed_results)}
 
-    return await asyncio.to_thread(compile_team_image_sync, filled_slots, club_name, club_sigla, money, overall_total, processed_cards_map, formation)
+    return await asyncio.to_thread(
+        compile_team_image_sync,
+        filled_slots,
+        club_name,
+        club_sigla,
+        money,
+        overall_total,
+        processed_cards_map,
+        formation
+    )
 
 # ==========================================
 # FUNCIONES AUXILIARES BASE DE DATOS
@@ -393,7 +417,11 @@ def is_not_locked():
 def is_in_admin_guild():
     async def predicate(interaction: discord.Interaction):
         if interaction.guild_id != ADMIN_GUILD_ID:
-            await interaction.response.send_message("❌ **Acesso Negado:** Este comando administrativo só pode ser executado no servidor oficial autorizado.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ **Acesso Negado:** Este comando administrativo só pode ser executado "
+                "no servidor oficial autorizado.",
+                ephemeral=True
+            )
             return False
         return True
     return app_commands.check(predicate)
@@ -437,7 +465,11 @@ class BuyView(discord.ui.View):
         self.children[1].style = discord.ButtonStyle.success
         self.children[2].disabled = (self.current_index == len(self.matches) - 1)
         
-        embed = discord.Embed(title="🛒 Mercado de Fichajes", description=f"Buscando: **{player['name']}**", color=discord.Color.blue())
+        embed = discord.Embed(
+            title="🛒 Mercado de Fichajes",
+            description=f"Buscando: **{player['name']}**",
+            color=discord.Color.blue()
+        )
         embed.add_field(name="Posición", value=player["pos"], inline=True)
         embed.add_field(name="Overall", value=f"⭐ {player['over']}", inline=True)
         embed.add_field(name="Valor de Mercado", value=f"💰 **${precio:,}**", inline=False)
@@ -461,7 +493,10 @@ class BuyView(discord.ui.View):
         user_profile = await get_user_profile(self.user)
             
         if user_profile["money"] < precio:
-            return await interaction.response.send_message(f"💸 **Fondos insuficientes.** Necesitas ${precio:,} para comprar a {player['name']}.", ephemeral=True)
+            return await interaction.response.send_message(
+                f"💸 **Fondos insuficientes.** Necesitas ${precio:,} para comprar a {player['name']}.",
+                ephemeral=True
+            )
             
         user_profile["money"] -= precio
         user_profile["inventory"].append(player) # AHORA PERMITE REPETIDOS
@@ -471,7 +506,10 @@ class BuyView(discord.ui.View):
         self.children[1].label = "Comprado"
         self.children[1].style = discord.ButtonStyle.secondary
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send(f"✅ **¡Fichaje Exitoso!** Has contratado a **{player['name']}** por **${precio:,}**.", ephemeral=True)
+        await interaction.followup.send(
+            f"✅ **¡Fichaje Exitoso!** Has contratado a **{player['name']}** por **${precio:,}**.",
+            ephemeral=True
+        )
 
     @discord.ui.button(label="➡️", style=discord.ButtonStyle.secondary)
     async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -493,7 +531,10 @@ class TiendaView(discord.ui.View):
         profile = await get_user_profile(self.user)
 
         if profile.get("premium_coins", 0) < cost:
-            return await interaction.followup.send(f"💸 No tienes suficientes **Monedas Premium**. Necesitas 💎 {cost}.", ephemeral=True)
+            return await interaction.followup.send(
+                f"💸 No tienes suficientes **Monedas Premium**. Necesitas 💎 {cost}.",
+                ephemeral=True
+            )
 
         profile["premium_coins"] -= cost
 
@@ -643,7 +684,10 @@ class FormationSelect(discord.ui.Select):
         user_profile["starting_xi"] = [] 
         await save_user_profile(self.user_obj.id, user_profile)
         
-        await self.view.refresh_board(interaction, f"✅ Formación cambiada a **{self.values[0]}**. El equipo ha sido vaciado para evitar errores, usa el botón de 'Auto Escalar'.")
+        await self.view.refresh_board(
+            interaction, 
+            "✅ Formación cambiada a **{self.values[0]}**. O time foi esvaziado para evitar erros, use 'Auto Escalar'."
+        )
 
 # --- SISTEMA DE SELEÇÃO DE CAPITÃO ---
 class CaptainSelect(discord.ui.Select):
@@ -669,7 +713,10 @@ class CaptainSelect(discord.ui.Select):
         if selected_player:
             user_profile["captain"] = selected_player["id"]
             await save_user_profile(interaction.user.id, user_profile)
-            await interaction.response.send_message(f"👑 **{selected_player['name']}** es ahora el gran capitán de {user_profile['club_name']}!", ephemeral=True)
+            await interaction.response.send_message(
+                f"👑 **{selected_player['name']}** es ahora el gran capitán de {user_profile['club_name']}!", 
+                ephemeral=True
+            )
         else:
             await interaction.response.send_message("❌ Jugador no encontrado en tu 11 titular.", ephemeral=True)
 
@@ -693,10 +740,20 @@ class TeamView(discord.ui.View):
         money = user_profile['money']
         overall_total = sum(p["over"] for p in user_profile.get("starting_xi", []))
         
-        image_bytes = await optimized_generate_pitch_image(user_profile.get("starting_xi", []), user_profile["club_name"], sigla, money, overall_total, formation)
+        image_bytes = await optimized_generate_pitch_image(
+            user_profile.get("starting_xi", []),
+            user_profile["club_name"],
+            sigla,
+            money,
+            overall_total,
+            formation
+        )
         file = discord.File(image_bytes, filename="pitch.png")
         
-        embed = discord.Embed(title=f"🏟️ Prancheta Tática: {user_profile['club_name']}", color=discord.Color.dark_green())
+        embed = discord.Embed(
+            title=f"🏟️ Prancheta Tática: {user_profile['club_name']}",
+            color=discord.Color.dark_green()
+        )
         embed.add_field(name="Rating del Equipo", value=f"⭐ **{overall_total}**", inline=True)
         embed.add_field(name="Formación", value=f"📋 **{formation}**", inline=True)
         embed.add_field(name="Finanzas del Club", value=f"💰 **${money:,}**", inline=False)
@@ -731,7 +788,7 @@ class TeamView(discord.ui.View):
                     p_group = get_pos_group(p.get("pos", "MC"))
                     if p_group == pos_group and added < count:
                         new_xi.append(p)
-                        used_ids.add(p["id"]) # Esto asegura que no ponga repetidos EN EL CAMPO aunque existan en el inventario.
+                        used_ids.add(p["id"])
                         added += 1
                     
         user_profile["starting_xi"] = new_xi
@@ -747,7 +804,10 @@ class TeamView(discord.ui.View):
         starting_xi = user_profile.get("starting_xi", [])
         
         if not starting_xi:
-            return await interaction.response.send_message("❌ Necesitas jugadores en tu 11 titular para elegir un capitán.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ Necesitas jugadores en tu 11 titular para elegir un capitán.",
+                ephemeral=True
+            )
             
         view = CaptainView(self.user, starting_xi)
         await interaction.response.send_message("👑 **Selecciona al capitán de tu equipo:**", view=view, ephemeral=True)
@@ -786,31 +846,34 @@ async def help_cmd(interaction: discord.Interaction):
         color=discord.Color.blue()
     )
     
-    jugador_cmds = """
-    `/sobre` - Abre una caja misteriosa cada 12h.
-    `/tienda` - Compra paquetes con Monedas Premium.
-    `/claim` - Recluta un jugador aleatorio (10m).
-    `/jugadores` - Explora el mercado global.
-    `/buy` - Compra un jugador del mercado.
-    `/sell` - Vende un jugador de tu inventario.
-    `/economia` - Revisa el saldo de tu club.
-    `/pay` - Transfiere dinero a otro mánager.
-    """
+    jugador_cmds = (
+        "`/sobre` - Abre una caja misteriosa cada 12h.\n"
+        "`/tienda` - Compra paquetes con Monedas Premium.\n"
+        "`/claim` - Recluta un jugador aleatorio (10m).\n"
+        "`/jugadores` - Explora el mercado global.\n"
+        "`/buy` - Compra un jugador del mercado.\n"
+        "`/sell` - Vende un jugador de tu inventario.\n"
+        "`/economia` - Revisa el saldo de tu club.\n"
+        "`/pay` - Transfiere dinero a otro mánager."
+    )
     embed.add_field(name="🎮 Jugador y Economía", value=jugador_cmds, inline=False)
     
-    equipo_cmds = """
-    `/team` - Mira tu alineación táctica y organiza tu equipo.
-    `/nameclub` - Cambia el nombre de tu club.
-    `/playersinicial` - Lista tus titulares.
-    `/addplayerinicial` - Sube un jugador a titular.
-    `/onceinicial` - Manda un titular al banquillo.
-    `/matching` - ¡Desafía a un rival a un partido!
-    `/ia_match` - ¡Juega contra la Inteligencia Artificial!
-    `/ranking` - Mira el Top Global de Victorias.
-    """
+    equipo_cmds = (
+        "`/team` - Mira tu alineación táctica y organiza tu equipo.\n"
+        "`/nameclub` - Cambia el nombre de tu club.\n"
+        "`/playersinicial` - Lista tus titulares.\n"
+        "`/addplayerinicial` - Sube un jugador a titular.\n"
+        "`/onceinicial` - Manda un titular al banquillo.\n"
+        "`/matching` - ¡Desafía a un rival a un partido!\n"
+        "`/ia_match` - ¡Juega contra la Inteligencia Artificial!\n"
+        "`/ranking` - Mira el Top Global de Victorias."
+    )
     embed.add_field(name="⚽ Gestión y Partidos", value=equipo_cmds, inline=False)
     
-    admin_cmds = "`/addplayer`, `/editplayer`, `/delplayer`, `/bulkadd`, `/addmoney`, `/removemoney`, `/giveplayer`, `/takeplayer`, `/lock`, `/unlock`, `/resetglobal`"
+    admin_cmds = (
+        "`/addplayer`, `/editplayer`, `/delplayer`, `/bulkadd`, `/addmoney`, "
+        "`/removemoney`, `/giveplayer`, `/takeplayer`, `/lock`, `/unlock`, `/resetglobal`"
+    )
     embed.add_field(name="⚙️ Comandos de Admin", value=admin_cmds, inline=False)
     
     embed.set_footer(text="SSA Guru - Street Soccer All One", icon_url=interaction.user.display_avatar.url)
@@ -824,11 +887,32 @@ async def tienda_cmd(interaction: discord.Interaction):
     if not all_players:
         return await interaction.followup.send("❌ No hay jugadores en el mercado para armar paquetes.")
     
-    embed = discord.Embed(title="🏪 Tienda Premium SSA", description="Usa tus **Monedas Premium 💎** para comprar paquetes exclusivos y mejorar tu club.", color=discord.Color.purple())
-    embed.add_field(name="📦 Paquete Básico (20 💎)", value="3 Cartas.\nChances: Común 66%, Rara 25%, Épica 3%, TOTW 3%, TOTS 2%, Legendaria 1%", inline=False)
-    embed.add_field(name="🎒 Paquete Estándar (50 💎)", value="5 Cartas.\nChances: Común 51%, Rara 35%, Épica 5%, TOTW 5%, TOTS 2%, Legendaria 2%", inline=False)
-    embed.add_field(name="🎁 Paquete Premium (100 💎)", value="7 Cartas.\nChances: Común 36%, Rara 45%, Épica 7%, TOTW 7%, TOTS 2%, Legendaria 3%", inline=False)
-    embed.add_field(name="👑 Paquete Élite (250 💎)", value="10 Cartas.\nChances: Común 21%, Rara 50%, Épica 10%, TOTW 10%, TOTS 4%, Legendaria 5%\n⚡ **¡Garantizada 1 Épica o superior!**", inline=False)
+    embed = discord.Embed(
+        title="🏪 Tienda Premium SSA",
+        description="Usa tus **Monedas Premium 💎** para comprar paquetes exclusivos y mejorar tu club.",
+        color=discord.Color.purple()
+    )
+    embed.add_field(
+        name="📦 Paquete Básico (20 💎)",
+        value="3 Cartas.\nChances: Común 66%, Rara 25%, Épica 3%, TOTW 3%, TOTS 2%, Legendaria 1%",
+        inline=False
+    )
+    embed.add_field(
+        name="🎒 Paquete Estándar (50 💎)",
+        value="5 Cartas.\nChances: Común 51%, Rara 35%, Épica 5%, TOTW 5%, TOTS 2%, Legendaria 2%",
+        inline=False
+    )
+    embed.add_field(
+        name="🎁 Paquete Premium (100 💎)",
+        value="7 Cartas.\nChances: Común 36%, Rara 45%, Épica 7%, TOTW 7%, TOTS 2%, Legendaria 3%",
+        inline=False
+    )
+    embed.add_field(
+        name="👑 Paquete Élite (250 💎)",
+        value="10 Cartas.\nChances: Común 21%, Rara 50%, Épica 10%, TOTW 10%, TOTS 4%, Legendaria 5%\n"
+              "⚡ **¡Garantizada 1 Épica o superior!**",
+        inline=False
+    )
     
     view = TiendaView(interaction.user, all_players)
     await interaction.followup.send(embed=embed, view=view)
@@ -843,7 +927,10 @@ async def sobre(interaction: discord.Interaction):
         restante = 43200 - (now - profile.get("last_sobre", 0))
         horas = int(restante // 3600)
         minutos = int((restante % 3600) // 60)
-        return await interaction.response.send_message(f"⏳ Debes esperar **{horas}h {minutos}m** para abrir otro sobre.", ephemeral=True)
+        return await interaction.response.send_message(
+            f"⏳ Debes esperar **{horas}h {minutos}m** para abrir otro sobre.",
+            ephemeral=True
+        )
     
     caixas = ["Madera", "Hierro", "Oro", "Esmeralda", "Diamante", "SSA Icon"]
     pesos = [30, 25, 20, 12, 8, 5]
@@ -859,8 +946,15 @@ async def sobre(interaction: discord.Interaction):
     profile["last_sobre"] = now
     await save_user_profile(interaction.user.id, profile)
     
-    embed = discord.Embed(title="🎁 ¡Caja Misteriosa Abierta!", description=f"Has abierto una caja de **{obtenida}**.", color=discord.Color.brand_green())
-    embed.add_field(name="Recompensas", value=f"💰 **${recompensa_dinero:,}**\n💎 **{recompensa_premium} Monedas Premium**")
+    embed = discord.Embed(
+        title="🎁 ¡Caja Misteriosa Abierta!",
+        description=f"Has abierto una caja de **{obtenida}**.",
+        color=discord.Color.brand_green()
+    )
+    embed.add_field(
+        name="Recompensas",
+        value=f"💰 **${recompensa_dinero:,}**\n💎 **{recompensa_premium} Monedas Premium**"
+    )
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="economia", description="Muestra el saldo y estado financiero de tu club.")
@@ -897,7 +991,11 @@ async def pay(interaction: discord.Interaction, usuario: discord.Member, cantida
     await save_user_profile(interaction.user.id, sender)
     await save_user_profile(usuario.id, receiver)
     
-    embed = discord.Embed(title="💸 Transferencia Exitosa", description=f"Has enviado **${cantidad:,}** a {usuario.mention}.", color=discord.Color.green())
+    embed = discord.Embed(
+        title="💸 Transferencia Exitosa",
+        description=f"Has enviado **${cantidad:,}** a {usuario.mention}.",
+        color=discord.Color.green()
+    )
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="buy", description="Busca y contrata a un jugador.")
@@ -916,7 +1014,11 @@ async def buy(interaction: discord.Interaction, nombre_jugador: str):
     player = matches[0]
     precio = calculate_price(player["over"])
     
-    embed = discord.Embed(title="🛒 Mercado de Fichajes", description=f"Buscando: **{player['name']}**", color=discord.Color.blue())
+    embed = discord.Embed(
+        title="🛒 Mercado de Fichajes",
+        description=f"Buscando: **{player['name']}**",
+        color=discord.Color.blue()
+    )
     embed.add_field(name="Posición", value=player["pos"], inline=True)
     embed.add_field(name="Overall", value=f"⭐ {player['over']}", inline=True)
     embed.add_field(name="Valor de Mercado", value=f"💰 **${precio:,}**", inline=False)
@@ -941,17 +1043,20 @@ async def sell(interaction: discord.Interaction, nombre_jugador: str):
     target_player = matches[0]
     precio_venta = int(calculate_price(target_player["over"]) * 0.20) 
     
-    # remove() elimina LA PRIMERA COINCIDENCIA que encuentra. ¡Perfecto para vender 1 solo de los repetidos!
     user_profile["inventory"].remove(target_player) 
     
-    # Si ese jugador que acabamos de vender formaba parte del once titular (y no queda otro de reemplazo en la misma instancia), lo sacamos.
-    # En este caso, por precaución extraemos a ese ID de la alineación titular. Si tiene otro repetido, el usuario lo volverá a meter.
-    user_profile["starting_xi"] = [p for p in user_profile["starting_xi"] if p["id"] != target_player["id"]]
+    user_profile["starting_xi"] = [
+        p for p in user_profile["starting_xi"] if p["id"] != target_player["id"]
+    ]
     user_profile["money"] += precio_venta
     
     await save_user_profile(interaction.user.id, user_profile)
     
-    embed = discord.Embed(title="👋 Venta Completada", description=f"Has vendido a **{target_player['name']}**.", color=discord.Color.red())
+    embed = discord.Embed(
+        title="👋 Venta Completada",
+        description=f"Has vendido a **{target_player['name']}**.",
+        color=discord.Color.red()
+    )
     embed.add_field(name="Ingreso", value=f"💰 **${precio_venta:,}**")
     await interaction.response.send_message(embed=embed)
 
@@ -965,15 +1070,16 @@ async def claim(interaction: discord.Interaction):
         restante = 600 - (now - profile.get("last_claim", 0))
         minutos = int(restante // 60)
         segundos = int(restante % 60)
-        return await interaction.response.send_message(f"⏳ Espera **{minutos}m {segundos}s**.", ephemeral=True)
+        return await interaction.response.send_message(
+            f"⏳ Espera **{minutos}m {segundos}s**.",
+            ephemeral=True
+        )
         
     await interaction.response.defer()
     players_data = await get_all_players()
     if not players_data:
         return await interaction.followup.send("❌ No hay jugadores registrados en el sistema global.")
         
-    # LA SOLUCIÓN DEL EXPLOIT 254/255 ESTÁ AQUÍ. 
-    # Tira de todos los jugadores SIEMPRE, para que las probabilidades y los mejores no salgan gratis al final.
     available_players = [row["data"] for row in players_data]
     
     pesos = []
@@ -989,14 +1095,23 @@ async def claim(interaction: discord.Interaction):
     
     precio = calculate_price(obtenido["over"])
     
-    embed = discord.Embed(title="🎉 ¡Búsqueda de Talentos!", description=f"Has encontrado a **{obtenido['name']}**.", color=discord.Color.purple())
+    embed = discord.Embed(
+        title="🎉 ¡Búsqueda de Talentos!",
+        description=f"Has encontrado a **{obtenido['name']}**.",
+        color=discord.Color.purple()
+    )
     embed.add_field(name="Posición", value=f"⚽ {obtenido['pos']}", inline=True)
     embed.add_field(name="Overall", value=f"⭐ {obtenido['over']}", inline=True)
     embed.add_field(name="Valor Estimado", value=f"💰 ${precio:,}", inline=False)
-    if obtenido.get("card"): embed.set_image(url=obtenido["card"])
+    if obtenido.get("card"):
+        embed.set_image(url=obtenido["card"])
     
     view = ClaimView(interaction.user, obtenido, precio)
-    msg = await interaction.followup.send("¿Qué deseas hacer con este jugador?", embed=embed, view=view)
+    msg = await interaction.followup.send(
+        "¿Qué deseas hacer con este jugador?",
+        embed=embed,
+        view=view
+    )
     view.message = msg 
 
 @bot.tree.command(name="jugadores", description="Lista todos los jugadores del bot (Mercado Global).")
@@ -1017,7 +1132,11 @@ async def jugadores(interaction: discord.Interaction):
         embed = discord.Embed(title="🌐 Mercado Global de Jugadores", color=discord.Color.dark_theme())
         for p in chunk:
             precio = calculate_price(p["over"])
-            embed.add_field(name=f"{p['name']} ({p['pos']})", value=f"⭐ Over: {p['over']} | 💰 Costo: ${precio:,}", inline=False)
+            embed.add_field(
+                name=f"{p['name']} ({p['pos']})",
+                value=f"⭐ Over: {p['over']} | 💰 Costo: ${precio:,}",
+                inline=False
+            )
         embed.set_footer(text=f"Página {i//chunk_size + 1}/{(len(lista)-1)//chunk_size + 1}")
         pages.append(embed)
         
@@ -1032,7 +1151,11 @@ async def team(interaction: discord.Interaction):
     formation = profile.get("formation", "4-3-3")
     
     if not profile.get("starting_xi"):
-        embed = discord.Embed(title=f"🏟️ Equipo: {profile['club_name']}", description="Aún no tienes un 11 inicial configurado.", color=discord.Color.red())
+        embed = discord.Embed(
+            title=f"🏟️ Equipo: {profile['club_name']}",
+            description="Aún no tienes un 11 inicial configurado.",
+            color=discord.Color.red()
+        )
         view = TeamView(interaction.user)
         return await interaction.followup.send(embed=embed, view=view)
         
@@ -1041,10 +1164,15 @@ async def team(interaction: discord.Interaction):
     
     overall_total = sum(p["over"] for p in profile["starting_xi"]) if profile["starting_xi"] else 0
     
-    image_buffer = await optimized_generate_pitch_image(profile["starting_xi"], profile["club_name"], sigla, money, overall_total, formation)
+    image_buffer = await optimized_generate_pitch_image(
+        profile["starting_xi"], profile["club_name"], sigla, money, overall_total, formation
+    )
     file = discord.File(image_buffer, filename="pitch.png")
     
-    embed = discord.Embed(title=f"🏟️ Prancheta Tática: {profile['club_name']}", color=discord.Color.dark_green())
+    embed = discord.Embed(
+        title=f"🏟️ Prancheta Tática: {profile['club_name']}",
+        color=discord.Color.dark_green()
+    )
     embed.add_field(name="Rating del Equipo", value=f"⭐ **{overall_total}**", inline=True)
     embed.add_field(name="Formación", value=f"📋 **{formation}**", inline=True)
     embed.add_field(name="Finanzas del Club", value=f"💰 **${money:,}**", inline=False)
@@ -1071,7 +1199,11 @@ async def playersinicial(interaction: discord.Interaction):
     xi = profile.get("starting_xi", [])
     if not xi: return await interaction.response.send_message("Tu 11 inicial está vacío.", ephemeral=True)
     desc = "\n".join([f"**{p['name']}** - {p['pos']} (⭐ {p['over']})" for p in xi])
-    embed = discord.Embed(title=f"⚽ 11 Titular de {profile['club_name']}", description=desc, color=discord.Color.orange())
+    embed = discord.Embed(
+        title=f"⚽ 11 Titular de {profile['club_name']}",
+        description=desc,
+        color=discord.Color.orange()
+    )
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="addplayerinicial", description="Añade un jugador a tu 11 titular.")
@@ -1079,13 +1211,15 @@ async def playersinicial(interaction: discord.Interaction):
 async def addplayerinicial(interaction: discord.Interaction, nombre: str):
     profile = await get_user_profile(interaction.user)
     if len(profile.get("starting_xi", [])) >= 11:
-        return await interaction.response.send_message("❌ Tu 11 inicial ya está lleno (11 jugadores).", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ Tu 11 inicial ya está lleno (11 jugadores).",
+            ephemeral=True
+        )
     matches = [p for p in profile.get("inventory", []) if nombre.lower() in p["name"].lower()]
     if not matches:
         return await interaction.response.send_message("❌ No tienes ese jugador.", ephemeral=True)
     target = matches[0]
     
-    # LA VALIDACIÓN EXISTE: NO LOS DEJA METER A DOS VECES EL MISMO JUGADOR AUNQUE TENGAN REPETIDOS.
     if any(p["id"] == target["id"] for p in profile.get("starting_xi", [])):
         return await interaction.response.send_message("❌ Ya está en el 11 titular.", ephemeral=True)
     
@@ -1118,7 +1252,10 @@ class MatchAcceptView(discord.ui.View):
     @discord.ui.button(label="Aceptar Desafío", style=discord.ButtonStyle.success, emoji="⚔️")
     async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.oponente.id:
-            return await interaction.response.send_message("❌ ¡Solo el desafiado puede aceptar el duelo!", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ ¡Solo el desafiado puede aceptar el duelo!",
+                ephemeral=True
+            )
         self.accepted = True
         for child in self.children: child.disabled = True
         await interaction.response.edit_message(view=self)
@@ -1127,11 +1264,17 @@ class MatchAcceptView(discord.ui.View):
     @discord.ui.button(label="Rechazar", style=discord.ButtonStyle.danger, emoji="🏳️")
     async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.oponente.id:
-            return await interaction.response.send_message("❌ ¡Solo el desafiado puede rechazar el duelo!", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ ¡Solo el desafiado puede rechazar el duelo!",
+                ephemeral=True
+            )
         self.accepted = False
         for child in self.children: child.disabled = True
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send(f"🚫 **¡Cobarde!** El miedo dominó el vestuario de **{self.oponente.display_name}** y huyó del partido.")
+        await interaction.followup.send(
+            f"🚫 **¡Cobarde!** El medo dominou o vestiário de **{self.oponente.display_name}** "
+            "e ele fugiu da partida."
+        )
         self.stop()
 
 @bot.tree.command(name="matching", description="Desafía a un oponente a un duelo 11v11 en la SSA Arena.")
@@ -1141,7 +1284,10 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
         return await interaction.response.send_message("❌ No puedes jugar contra ti mismo.", ephemeral=True)
     
     if interaction.user.id in ACTIVE_MATCHES or rival.id in ACTIVE_MATCHES:
-        return await interaction.response.send_message("❌ Alguien ya está jugando un partido. Espera a que termine.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ Alguien ya está jugando un partido. Espera a que termine.",
+            ephemeral=True
+        )
         
     p1_profile = await get_user_profile(interaction.user)
     p2_profile = await get_user_profile(rival)
@@ -1150,9 +1296,15 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
     p2_xi = p2_profile.get("starting_xi", [])
     
     if len(p1_xi) < 11:
-        return await interaction.response.send_message("❌ Tu equipo NO está completo. Necesitas 11 titulares.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ Tu equipo NO está completo. Necesitas 11 titulares.",
+            ephemeral=True
+        )
     if len(p2_xi) < 11:
-        return await interaction.response.send_message(f"❌ El equipo de {rival.display_name} NO está completo.", ephemeral=True)
+        return await interaction.response.send_message(
+            f"❌ El equipo de {rival.display_name} NO está completo.",
+            ephemeral=True
+        )
         
     ACTIVE_MATCHES.add(interaction.user.id)
     ACTIVE_MATCHES.add(rival.id)
@@ -1163,7 +1315,8 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
         
         embed_convite = discord.Embed(
             title="⚔️ ¡NUEVO DESAFÍO EN EL CAMPO!",
-            description=f"**{interaction.user.display_name}** ha lanzado el guante y desafía a {rival.mention} a un partido oficial.",
+            description=f"**{interaction.user.display_name}** ha lanzado el guante y "
+                        f"desafía a {rival.mention} a un partido oficial.",
             color=discord.Color.red()
         )
         embed_convite.add_field(name="🏟️ Estadio", value="SSA Arena", inline=True)
@@ -1176,14 +1329,26 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
         await view.wait()
         
         if view.accepted is None:
-            return await interaction.followup.send(f"⏱️ El tiempo expiró. **{rival.display_name}** no se atrevió a salir al campo.")
+            return await interaction.followup.send(
+                f"⏱️ El tiempo expiró. **{rival.display_name}** no se atrevió a salir al campo."
+            )
         elif not view.accepted:
             return 
             
         message = await interaction.original_response()
-        embed_jogo = discord.Embed(title="🎙️ TRANSMISIÓN EN VIVO - SSA TV", description="```\nEl balón está a punto de rodar...\n
-```", color=discord.Color.green())
-        await message.edit(content=f"🏟️ **¡La afición en la SSA Arena enloquece! ¡El árbitro pita el inicio!**", embed=embed_jogo, view=None)
+        
+        embed_jogo = discord.Embed(
+            title="🎙️ TRANSMISIÓN EN VIVO - SSA TV",
+            description="```text\nEl balón está a punto de rodar...\n
+```",
+            color=discord.Color.green()
+        )
+        
+        await message.edit(
+            content="🏟️ **¡La afición en la SSA Arena enloquece! ¡El árbitro pita el inicio!**",
+            embed=embed_jogo,
+            view=None
+        )
         
         p1_goles = 0
         p2_goles = 0
@@ -1232,16 +1397,22 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
             if dice < 0.35: 
                 if is_p1_attack: p1_goles += 1
                 else: p2_goles += 1
-                lance = random.choice(narrativas["gol"]).format(atk=atacante, ast=asistente, gk=portero, defensor=defensor)
+                lance = random.choice(narrativas["gol"]).format(
+                    atk=atacante, ast=asistente, gk=portero, defensor=defensor
+                )
             elif dice < 0.70: 
-                lance = random.choice(narrativas["defesa"]).format(atk=atacante, gk=portero, defensor=defensor)
+                lance = random.choice(narrativas["defesa"]).format(
+                    atk=atacante, gk=portero, defensor=defensor
+                )
             else: 
-                lance = random.choice(narrativas["erro"]).format(atk=atacante, gk=portero, ast=asistente, defensor=defensor)
+                lance = random.choice(narrativas["erro"]).format(
+                    atk=atacante, gk=portero, ast=asistente, defensor=defensor
+                )
                 
             historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
             texto_log = "\n\n".join(historial_eventos[-8:]) 
             
-            embed_jogo.description = f"```\n{texto_log}\n```"
+            embed_jogo.description = f"```text\n{texto_log}\n```"
             embed_jogo.clear_fields()
             
             embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
@@ -1251,9 +1422,16 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
             await message.edit(embed=embed_jogo)
             
         await asyncio.sleep(2)
-        final_embed = discord.Embed(title="🏁 ¡FINAL DEL PARTIDO EN LA SSA ARENA!", color=discord.Color.dark_gold())
-        final_embed.description = f"```\n{chr(10).join(historial_eventos)}\n
+        
+        final_embed = discord.Embed(
+            title="🏁 ¡FINAL DEL PARTIDO EN LA SSA ARENA!",
+            color=discord.Color.dark_gold()
+        )
+        
+        final_log = chr(10).join(historial_eventos)
+        final_embed.description = f"```text\n{final_log}\n
 ```" 
+        
         resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_profile['club_name']}**"
         final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
         
@@ -1292,7 +1470,10 @@ async def ia_match(interaction: discord.Interaction):
     p1_xi = p1_profile.get("starting_xi", [])
     
     if len(p1_xi) < 11:
-        return await interaction.response.send_message("❌ Tu equipo NO está completo. Necesitas 11 titulares.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ Tu equipo NO está completo. Necesitas 11 titulares.",
+            ephemeral=True
+        )
 
     ACTIVE_MATCHES.add(interaction.user.id)
     
@@ -1302,13 +1483,23 @@ async def ia_match(interaction: discord.Interaction):
         p2_club_name = "🤖 SSA Bot IA"
         
         media_ia = p2_fuerza // 11
-        p2_xi = [{"name": f"Bot {pos}", "pos": pos, "over": media_ia} for pos in ["PO", "DFC", "DFC", "DFC", "DFC", "MID", "MID", "MID", "DC", "DC", "DC"]]
+        p2_xi = [
+            {"name": f"Bot {pos}", "pos": pos, "over": media_ia}
+            for pos in ["PO", "DFC", "DFC", "DFC", "DFC", "MID", "MID", "MID", "DC", "DC", "DC"]
+        ]
         
         await interaction.response.send_message("⚙️ **Configurando partido contra la IA...**")
         message = await interaction.original_response()
         
-        embed_jogo = discord.Embed(title="🎙️ TRANSMISIÓN EN VIVO - SSA TV", description="```\nEl balón está a punto de rodar contra la Máquina...\n```", color=discord.Color.blurple())
-        await message.edit(content=f"🏟️ **¡La afición en la SSA Arena enloquece! ¡El árbitro pita el inicio!**", embed=embed_jogo)
+        embed_jogo = discord.Embed(
+            title="🎙️ TRANSMISIÓN EN VIVO - SSA TV",
+            description="```text\nEl balón está a punto de rodar contra la Máquina...\n```",
+            color=discord.Color.blurple()
+        )
+        await message.edit(
+            content="🏟️ **¡La afición en la SSA Arena enloquece! ¡El árbitro pita el inicio!**",
+            embed=embed_jogo
+        )
         
         p1_goles = 0
         p2_goles = 0
@@ -1353,16 +1544,22 @@ async def ia_match(interaction: discord.Interaction):
             if dice < 0.35: 
                 if is_p1_attack: p1_goles += 1
                 else: p2_goles += 1
-                lance = random.choice(narrativas["gol"]).format(atk=atacante, ast=asistente, gk=portero, defensor=defensor)
+                lance = random.choice(narrativas["gol"]).format(
+                    atk=atacante, ast=asistente, gk=portero, defensor=defensor
+                )
             elif dice < 0.70: 
-                lance = random.choice(narrativas["defesa"]).format(atk=atacante, gk=portero, defensor=defensor)
+                lance = random.choice(narrativas["defesa"]).format(
+                    atk=atacante, gk=portero, defensor=defensor
+                )
             else: 
-                lance = random.choice(narrativas["erro"]).format(atk=atacante, gk=portero, ast=asistente, defensor=defensor)
+                lance = random.choice(narrativas["erro"]).format(
+                    atk=atacante, gk=portero, ast=asistente, defensor=defensor
+                )
                 
             historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
             texto_log = "\n\n".join(historial_eventos[-8:]) 
             
-            embed_jogo.description = f"```\n{texto_log}\n
+            embed_jogo.description = f"```text\n{texto_log}\n
 ```"
             embed_jogo.clear_fields()
             
@@ -1373,8 +1570,15 @@ async def ia_match(interaction: discord.Interaction):
             await message.edit(embed=embed_jogo)
             
         await asyncio.sleep(2)
-        final_embed = discord.Embed(title="🏁 ¡FINAL DEL PARTIDO CONTRA LA IA!", color=discord.Color.dark_gold())
-        final_embed.description = f"```\n{chr(10).join(historial_eventos)}\n```" 
+        
+        final_embed = discord.Embed(
+            title="🏁 ¡FINAL DEL PARTIDO CONTRA LA IA!",
+            color=discord.Color.dark_gold()
+        )
+        
+        final_log = chr(10).join(historial_eventos)
+        final_embed.description = f"```text\n{final_log}\n```" 
+        
         resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_club_name}**"
         final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
         
@@ -1400,7 +1604,11 @@ async def ia_match_error(interaction: discord.Interaction, error: app_commands.A
     if isinstance(error, app_commands.CommandOnCooldown):
         minutos = int(error.retry_after // 60)
         segundos = int(error.retry_after % 60)
-        await interaction.response.send_message(f"⏳ Los jugadores están descansando. Espera **{minutos}m {segundos}s** para jugar contra la IA de nuevo.", ephemeral=True)
+        await interaction.response.send_message(
+            f"⏳ Los jugadores están descansando. Espera **{minutos}m {segundos}s** "
+            "para jugar contra la IA de nuevo.",
+            ephemeral=True
+        )
 
 @bot.tree.command(name="ranking", description="Muestra el ranking global de victorias.")
 @is_not_locked()
@@ -1426,13 +1634,20 @@ async def ranking(interaction: discord.Interaction):
 @is_in_admin_guild()
 async def resetglobal(interaction: discord.Interaction):
     if interaction.user.id not in ALLOWED_RESET_USERS:
-        return await interaction.response.send_message("❌ **Acesso Negado:** Apenas os donos absolutos do bot podem usar este comando incrivelmente destrutivo.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ **Acesso Negado:** Apenas os donos absolutos do bot podem usar este comando "
+            "incrivelmente destrutivo.",
+            ephemeral=True
+        )
         
     await interaction.response.defer(ephemeral=True)
     try:
         supabase.table("jogadores").delete().neq("id", "0").execute()
         PLAYER_CARD_CACHE.clear()
-        await interaction.followup.send("🚨 **FACTORY RESET COMPLETADO**. Toda la base de datos (usuarios, inventarios, dinero y jugadores globales) ha sido borrada permanentemente. El bot vuelve al estado de fábrica.")
+        await interaction.followup.send(
+            "🚨 **FACTORY RESET COMPLETADO**. Toda la base de datos (usuarios, inventarios, "
+            "dinero y jugadores globales) ha sido borrada permanentemente. El bot vuelve al estado de fábrica."
+        )
     except Exception as e:
         await interaction.followup.send(f"❌ Error al resetear la base de datos: {e}")
 
@@ -1449,7 +1664,7 @@ async def bulkadd(interaction: discord.Interaction, archivo: discord.Attachment)
     try:
         file_bytes = await archivo.read()
         content = file_bytes.decode('utf-8')
-    except Exception as e:
+    except Exception:
         return await interaction.followup.send("❌ Error al leer el archivo. Asegúrate de que sea un archivo de texto válido.")
         
     lineas = content.splitlines()
@@ -1489,10 +1704,20 @@ async def bulkadd(interaction: discord.Interaction, archivo: discord.Attachment)
 @bot.tree.command(name="addplayer", description="Admin: Añade un jugador (URL o Archivo adjunto).")
 @app_commands.checks.has_permissions(administrator=True)
 @is_in_admin_guild()
-async def addplayer(interaction: discord.Interaction, nick: str, over: int, posicion: str, url_imagen: str = None, imagem_anexada: discord.Attachment = None):
+async def addplayer(
+    interaction: discord.Interaction,
+    nick: str,
+    over: int,
+    posicion: str,
+    url_imagen: str = None,
+    imagem_anexada: discord.Attachment = None
+):
     posiciones = ["PO", "DFC", "MCD", "MC", "MCO", "DC"]
     if posicion.upper() not in posiciones:
-        return await interaction.response.send_message(f"❌ Posición inválida. Usa: {', '.join(posiciones)}", ephemeral=True)
+        return await interaction.response.send_message(
+            f"❌ Posición inválida. Usa: {', '.join(posiciones)}",
+            ephemeral=True
+        )
         
     final_url = imagem_anexada.url if imagem_anexada else url_imagen
     if final_url:
@@ -1501,9 +1726,16 @@ async def addplayer(interaction: discord.Interaction, nick: str, over: int, posi
             final_url = "https://" + final_url
             
     player_id = f"player_{str(uuid.uuid4())[:8]}"
-    await db_upsert(player_id, {"id": player_id, "name": nick, "over": over, "pos": posicion.upper(), "card": final_url})
+    await db_upsert(
+        player_id,
+        {"id": player_id, "name": nick, "over": over, "pos": posicion.upper(), "card": final_url}
+    )
     
-    embed = discord.Embed(title="✅ Jugador Añadido", description=f"**{nick}** ha sido añadido exitosamente.", color=discord.Color.green())
+    embed = discord.Embed(
+        title="✅ Jugador Añadido",
+        description=f"**{nick}** ha sido añadido exitosamente.",
+        color=discord.Color.green()
+    )
     if final_url:
         embed.set_thumbnail(url=final_url)
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -1511,7 +1743,14 @@ async def addplayer(interaction: discord.Interaction, nick: str, over: int, posi
 @bot.tree.command(name="editplayer", description="Admin: Edita un jugador existente (Sincroniza globalmente).")
 @app_commands.checks.has_permissions(administrator=True)
 @is_in_admin_guild()
-async def editplayer(interaction: discord.Interaction, nombre: str, nuevo_over: int = None, nueva_pos: str = None, url_imagen: str = None, imagem_anexada: discord.Attachment = None):
+async def editplayer(
+    interaction: discord.Interaction,
+    nombre: str,
+    nuevo_over: int = None,
+    nueva_pos: str = None,
+    url_imagen: str = None,
+    imagem_anexada: discord.Attachment = None
+):
     await interaction.response.defer(ephemeral=True)
     players = await get_all_players()
     matches = [p for p in players if nombre.lower() in p["data"]["name"].lower()]
@@ -1560,9 +1799,14 @@ async def editplayer(interaction: discord.Interaction, nombre: str, nuevo_over: 
                 u_id_int = int(u["id"].split("_")[1])
                 await save_user_profile(u_id_int, profile)
                 updated_users += 1
-            except: pass
+            except Exception:
+                pass
 
-    embed = discord.Embed(title="✅ Jugador Actualizado", description=f"**{data['name']}** ha sido modificado.\nSincronizado en {updated_users} clube(s). Cache de imagen limpio.", color=discord.Color.green())
+    embed = discord.Embed(
+        title="✅ Jugador Actualizado",
+        description=f"**{data['name']}** ha sido modificado.\nSincronizado en {updated_users} clube(s).",
+        color=discord.Color.green()
+    )
     if data.get("card"):
         embed.set_thumbnail(url=data["card"])
     await interaction.followup.send(embed=embed)
@@ -1607,10 +1851,12 @@ async def delplayer(interaction: discord.Interaction, nombre: str):
                 u_id_int = int(u["id"].split("_")[1])
                 await save_user_profile(u_id_int, profile)
                 updated_users += 1
-            except:
+            except Exception:
                 pass
                 
-    await interaction.followup.send(f"🗑️ Jugador **{player_name}** eliminado permanentemente y removido del elenco de {updated_users} clube(s).")
+    await interaction.followup.send(
+        f"🗑️ Jugador **{player_name}** eliminado permanentemente y removido del elenco de {updated_users} clube(s)."
+    )
 
 @bot.tree.command(name="giveplayer", description="Admin: Añade un jugador al inventario de un usuario específico.")
 @app_commands.checks.has_permissions(administrator=True)
@@ -1625,12 +1871,11 @@ async def giveplayer(interaction: discord.Interaction, usuario: discord.Member, 
     target_player = matches[0]
     profile = await get_user_profile(usuario)
     
-    # Este comando lo usan los admins, así que aquí les quitamos el límite de repetidos. Pueden regalar el mismo a voluntad.
     profile["inventory"].append(target_player)
     await save_user_profile(usuario.id, profile)
     await interaction.followup.send(f"✅ Se ha añadido a **{target_player['name']}** al club de {usuario.mention}.")
 
-@bot.tree.command(name="takeplayer", description="Admin: Quita un jugador del inventario y titulares de un usuario específico.")
+@bot.tree.command(name="takeplayer", description="Admin: Quita un jugador de un usuario específico.")
 @app_commands.checks.has_permissions(administrator=True)
 @is_in_admin_guild()
 async def takeplayer(interaction: discord.Interaction, usuario: discord.Member, nombre_jugador: str):
@@ -1639,11 +1884,12 @@ async def takeplayer(interaction: discord.Interaction, usuario: discord.Member, 
     
     matches = [p for p in profile.get("inventory", []) if nombre_jugador.lower() in p["name"].lower()]
     if not matches:
-        return await interaction.followup.send(f"❌ El usuario {usuario.mention} no tiene a ese jugador en su inventario.")
+        return await interaction.followup.send(
+            f"❌ El usuario {usuario.mention} no tiene a ese jugador en su inventario."
+        )
         
     target_player = matches[0]
     
-    # Esto quita TODAS LAS COPIAS del jugador. Ideal para castigos admins.
     profile["inventory"] = [p for p in profile.get("inventory", []) if p["id"] != target_player["id"]]
     profile["starting_xi"] = [p for p in profile.get("starting_xi", []) if p["id"] != target_player["id"]]
     
@@ -1687,7 +1933,10 @@ async def removemoney(interaction: discord.Interaction, usuario: discord.Member,
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ No tienes permisos de administrador para usar esto.", ephemeral=True)
+        await interaction.response.send_message(
+            "❌ No tienes permisos de administrador para usar esto.",
+            ephemeral=True
+        )
 
 # ==========================================
 # EJECUCIÓN DEL BOT
