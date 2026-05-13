@@ -38,6 +38,9 @@ ACTIVE_MATCHES = set() # Trava global para impedir múltiplas partidas simultân
 
 ADMIN_GUILD_ID = 1477755013416878171 # ID do servidor onde los comandos de admin van a funcionar
 
+# IDs dos donos absolutos permitidos a usar o /resetglobal
+ALLOWED_RESET_USERS = [1023701850140192778, 338704196180115458]
+
 # ==========================================
 # SISTEMA DE KEEP-ALIVE PARA O RENDER
 # ==========================================
@@ -112,7 +115,7 @@ def get_pos_group(pos):
     if pos in ["DFC", "CB", "ZAG", "LD", "LE", "LTI", "LTD", "LI"]: return "DFC"
     if pos in ["DC", "ST", "CA", "EI", "ED", "PE", "PD", "EXT"]: return "DC"
     if pos in ["PO", "GK", "GOL"]: return "PO"
-    return "MID" # Fallback por si hay un error tipográfico
+    return "MID" 
 
 def get_renogare_font_cached(size):
     if size in CACHED_FONTS:
@@ -127,7 +130,6 @@ def get_renogare_font_cached(size):
 
 def draw_base_field():
     width, height = IMAGE_WIDTH, IMAGE_HEIGHT
-    # CAMBIO: Colores de césped más realistas
     field_img = Image.new("RGB", (width, height), color="#2b5e2b")
     draw = ImageDraw.Draw(field_img, "RGBA")
 
@@ -138,14 +140,41 @@ def draw_base_field():
 
     line_color = (255, 255, 255, 180)
     lw = 12 
+    
+    # Bordes exteriores
     draw.rectangle([40, 40, width-40, height-40], outline=line_color, width=lw)
+    # Línea central
     draw.line([40, height//2, width-40, height//2], fill=line_color, width=lw)
+    # Círculo central
     draw.ellipse([width//2 - 180, height//2 - 180, width//2 + 180, height//2 + 180], outline=line_color, width=lw)
-    draw.rectangle([350, 40, width-350, 350], outline=line_color, width=lw)
-    draw.rectangle([350, height-350, width-350, height-40], outline=line_color, width=lw)
+    # Punto central
+    draw.ellipse([width//2 - 12, height//2 - 12, width//2 + 12, height//2 + 12], fill=line_color)
+    
+    # Áreas grandes
+    draw.rectangle([320, 40, width-320, 350], outline=line_color, width=lw)
+    draw.rectangle([320, height-350, width-320, height-40], outline=line_color, width=lw)
+    
+    # Áreas chicas (Caja de gol)
+    draw.rectangle([480, 40, width-480, 140], outline=line_color, width=lw)
+    draw.rectangle([480, height-140, width-480, height-40], outline=line_color, width=lw)
 
-    draw.rectangle([0, 0, width, 150], fill=(0, 0, 0, 220))
-    draw.rectangle([0, height-120, width, height], fill=(0, 0, 0, 220))
+    # Medialunas (Arcos de penal)
+    draw.arc([width//2 - 130, 220, width//2 + 130, 480], start=0, end=180, fill=line_color, width=lw)
+    draw.arc([width//2 - 130, height-480, width//2 + 130, height-220], start=180, end=360, fill=line_color, width=lw)
+    
+    # Puntos de penal
+    draw.ellipse([width//2 - 8, 260, width//2 + 8, 276], fill=line_color)
+    draw.ellipse([width//2 - 8, height-276, width//2 + 8, height-260], fill=line_color)
+
+    # Arcos de tiro de esquina
+    draw.arc([-20, -20, 100, 100], start=0, end=90, fill=line_color, width=lw)
+    draw.arc([width-100, -20, width+20, 100], start=90, end=180, fill=line_color, width=lw)
+    draw.arc([-20, height-100, 100, height+20], start=270, end=360, fill=line_color, width=lw)
+    draw.arc([width-100, height-100, width+20, height+20], start=180, end=270, fill=line_color, width=lw)
+
+    # Sombras decorativas top y bottom
+    draw.rectangle([0, 0, width, 150], fill=(0, 0, 0, 100))
+    draw.rectangle([0, height-120, width, height], fill=(0, 0, 0, 100))
     return field_img
 
 async def fetch_player_image_async(session, player_id, card_url):
@@ -208,13 +237,13 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
         if p_img:
             img_w, img_h = p_img.size
             # Sombra para dar profundidad a las cartas
-            draw.rectangle([cx - img_w//2 + 5, cy - img_h//2 + 5, cx + img_w//2 + 5, cy + img_h//2 + 5], fill=(0, 0, 0, 100))
+            draw.rectangle([cx - img_w//2 + 8, cy - img_h//2 + 8, cx + img_w//2 + 8, cy + img_h//2 + 8], fill=(0, 0, 0, 120))
             temp_img.paste(p_img, (int(cx - img_w//2), int(cy - img_h//2)), p_img)
         else:
             x1, y1 = int(cx - CARD_W//2), int(cy - CARD_H//2)
             x2, y2 = int(cx + CARD_W//2), int(cy + CARD_H//2)
-            draw.rounded_rectangle([x1, y1, x2, y2], radius=20, fill=(30, 30, 30, 180), outline="#666666", width=5)
-            draw.text((cx, cy), "+", font=plus_font, fill="#888888", anchor="mm")
+            draw.rounded_rectangle([x1, y1, x2, y2], radius=25, fill=(20, 20, 20, 200), outline="#ffd700", width=6)
+            draw.text((cx, cy), "+", font=plus_font, fill="#aaaaaa", anchor="mm")
 
     draw.text((width//2, 75), f"[{club_sigla}] {club_name.upper()} | {formation}", font=title_font, fill="#f1c40f", anchor="mm")
     money_text = f"💰 ${money:,}"
@@ -317,7 +346,6 @@ async def save_user_profile(user_id: int, data: dict):
     await db_upsert(f"user_{user_id}", data)
 
 def calculate_price(overall: int) -> int:
-    """Calcula el precio del jugador según la tabla oficial exacta."""
     precios = {
         78: 3_000_000, 79: 3_000_000, 80: 10_000_000, 81: 30_000_000,
         82: 50_000_000, 83: 80_000_000, 84: 100_000_000, 85: 120_000_000,
@@ -330,7 +358,6 @@ def calculate_price(overall: int) -> int:
     if overall >= 99: return 1_200_000_000
     elif overall in precios: return precios[overall]
     else:
-        # Para jugadores < 78, bajamos el precio poco a poco
         precio_menor = 3000000 - ((78 - overall) * 500000)
         return max(100000, precio_menor)
 
@@ -341,7 +368,6 @@ def get_random_player_name(xi_list, pos_groups):
     return random.choice(players).split()[-1] if players else "El jugador"
 
 def get_player_by_rarity(rarity, all_players):
-    """Filtra jugadores simulando rarezas por su media (OVR)"""
     if rarity == "Común": pool = [p for p in all_players if p["data"]["over"] <= 76]
     elif rarity == "Rara": pool = [p for p in all_players if 77 <= p["data"]["over"] <= 82]
     elif rarity == "Épica": pool = [p for p in all_players if 83 <= p["data"]["over"] <= 86]
@@ -433,15 +459,12 @@ class BuyView(discord.ui.View):
         player = self.matches[self.current_index]
         precio = calculate_price(player["over"])
         user_profile = await get_user_profile(self.user)
-        
-        if any(p["id"] == player["id"] for p in user_profile["inventory"]):
-            return await interaction.response.send_message("❌ Ya tienes a este jugador en tu club.", ephemeral=True)
             
         if user_profile["money"] < precio:
             return await interaction.response.send_message(f"💸 **Fondos insuficientes.** Necesitas ${precio:,} para comprar a {player['name']}.", ephemeral=True)
             
         user_profile["money"] -= precio
-        user_profile["inventory"].append(player)
+        user_profile["inventory"].append(player) # AHORA PERMITE REPETIDOS
         await save_user_profile(interaction.user.id, user_profile)
         
         self.children[1].disabled = True
@@ -477,6 +500,11 @@ class TiendaView(discord.ui.View):
         drawn_players = []
         rarities = list(probs.keys())
         weights = list(probs.values())
+        
+        rarity_emojis = {
+            "Común": "⚪", "Rara": "🔵", "Épica": "🟣", 
+            "TOTW": "🔴", "TOTS": "🏆", "Legendaria": "👑"
+        }
 
         for i in range(num_cards):
             if guaranteed and i == num_cards - 1:
@@ -485,25 +513,16 @@ class TiendaView(discord.ui.View):
                 chosen_rarity = random.choices(rarities, weights=weights, k=1)[0]
 
             player = get_player_by_rarity(chosen_rarity, self.all_players)
-            
-            # CONTROL DE DUPLICADOS PARA ECONOMIA JUSTA
-            if any(inv_p["id"] == player["id"] for inv_p in profile["inventory"]):
-                comp = int(calculate_price(player["over"]) * 0.20)
-                profile["money"] += comp
-                drawn_players.append((chosen_rarity, player, comp))
-            else:
-                profile["inventory"].append(player)
-                drawn_players.append((chosen_rarity, player, 0))
+            profile["inventory"].append(player) # PERMITE REPETIDOS PARA EVITAR EXPLOITS
+            drawn_players.append((chosen_rarity, player))
 
         await save_user_profile(self.user.id, profile)
 
         embed = discord.Embed(title=f"📦 ¡Paquete {pack_name} Abierto!", color=discord.Color.gold())
         desc = ""
-        for rarity, p, comp in drawn_players:
-            if comp > 0:
-                desc += f"**{rarity}** | ⭐ {p['over']} - {p['pos']} | **{p['name']}** *(Duplicado: +${comp:,})*\n"
-            else:
-                desc += f"**{rarity}** | ⭐ {p['over']} - {p['pos']} | **{p['name']}**\n"
+        for rarity, p in drawn_players:
+            emoji = rarity_emojis.get(rarity, "⚪")
+            desc += f"{emoji} **{rarity}** | ⭐ `{p['over']}` - {p['pos']} | **{p['name']}**\n"
                 
         embed.description = desc
         embed.set_footer(text=f"Monedas Premium restantes: 💎 {profile['premium_coins']}")
@@ -544,26 +563,15 @@ class ClaimView(discord.ui.View):
         if not self.processed and self.message:
             self.processed = True
             profile = await get_user_profile(self.user)
+            profile["inventory"].append(self.player) # PERMITE REPETIDOS
+            await save_user_profile(self.user.id, profile)
             
-            # CONTROL DE DUPLICADOS EN TIMEOUT
-            if any(p["id"] == self.player["id"] for p in profile["inventory"]):
-                profile["money"] += self.precio_venta
-                await save_user_profile(self.user.id, profile)
-                embed = self.message.embeds[0]
-                embed.color = discord.Color.gold()
-                embed.title = "🔁 Auto-Venta de Duplicado"
-                embed.description = f"El tiempo se agotó. Ya tenías a este jugador, así que fue vendido automáticamente por **${self.precio_venta:,}**."
-                self.disable_all()
-                await self.message.edit(content="⏱️ Tiempo agotado.", embed=embed, view=self)
-            else:
-                profile["inventory"].append(self.player)
-                await save_user_profile(self.user.id, profile)
-                embed = self.message.embeds[0]
-                embed.color = discord.Color.green()
-                embed.title = f"🎉 ¡{self.player['name']} Añadido al Club!"
-                embed.description = f"✅ **El jugador se ha guardado automáticamente en tu inventario por inactividad.**"
-                self.disable_all()
-                await self.message.edit(content="⏱️ Tiempo agotado. Jugador guardado.", embed=embed, view=self)
+            embed = self.message.embeds[0]
+            embed.color = discord.Color.green()
+            embed.title = f"🎉 ¡{self.player['name']} Añadido al Club!"
+            embed.description = f"✅ **El jugador se ha guardado automáticamente en tu inventario por inactividad.**"
+            self.disable_all()
+            await self.message.edit(content="⏱️ Tiempo agotado. Jugador guardado.", embed=embed, view=self)
 
     @discord.ui.button(label="Ficar (Añadir al Club)", style=discord.ButtonStyle.success, emoji="✅")
     async def keep_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -571,26 +579,15 @@ class ClaimView(discord.ui.View):
         self.processed = True
         
         profile = await get_user_profile(self.user)
-        # CONTROL DE DUPLICADOS AL ACEPTAR
-        if any(p["id"] == self.player["id"] for p in profile["inventory"]):
-            profile["money"] += self.precio_venta
-            await save_user_profile(self.user.id, profile)
-            embed = interaction.message.embeds[0]
-            embed.color = discord.Color.gold()
-            embed.title = "🔁 Jugador Duplicado"
-            embed.description = f"Ya tenías a este jugador en tu club. Ha sido vendido automáticamente por **${self.precio_venta:,}**."
-            self.disable_all()
-            await interaction.response.edit_message(embed=embed, view=self)
-        else:
-            profile["inventory"].append(self.player)
-            await save_user_profile(self.user.id, profile)
-            
-            embed = interaction.message.embeds[0]
-            embed.color = discord.Color.green()
-            embed.title = f"🎉 ¡{self.player['name']} Añadido al Club!"
-            embed.description = f"✅ **El jugador ha sido guardado en tu inventario.**"
-            self.disable_all()
-            await interaction.response.edit_message(embed=embed, view=self)
+        profile["inventory"].append(self.player) # PERMITE REPETIDOS
+        await save_user_profile(self.user.id, profile)
+        
+        embed = interaction.message.embeds[0]
+        embed.color = discord.Color.green()
+        embed.title = f"🎉 ¡{self.player['name']} Añadido al Club!"
+        embed.description = f"✅ **El jugador ha sido guardado en tu inventario.**"
+        self.disable_all()
+        await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(label="Vender Jugador", style=discord.ButtonStyle.danger, emoji="💰")
     async def sell_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -643,7 +640,7 @@ class FormationSelect(discord.ui.Select):
         await interaction.response.defer()
         user_profile = await get_user_profile(self.user_obj)
         user_profile["formation"] = self.values[0]
-        user_profile["starting_xi"] = [] # Vacía el 11 para que no queden bugueados en la nueva formación
+        user_profile["starting_xi"] = [] 
         await save_user_profile(self.user_obj.id, user_profile)
         
         await self.view.refresh_board(interaction, f"✅ Formación cambiada a **{self.values[0]}**. El equipo ha sido vaciado para evitar errores, usa el botón de 'Auto Escalar'.")
@@ -700,9 +697,9 @@ class TeamView(discord.ui.View):
         file = discord.File(image_bytes, filename="pitch.png")
         
         embed = discord.Embed(title=f"🏟️ Prancheta Tática: {user_profile['club_name']}", color=discord.Color.dark_green())
-        embed.add_field(name="Rating del Equipo (SOMA)", value=f"⭐ {overall_total}", inline=True)
-        embed.add_field(name="Formación", value=formation, inline=True)
-        embed.add_field(name="Dinero del Club", value=f"💰 ${money:,}", inline=False)
+        embed.add_field(name="Rating del Equipo", value=f"⭐ **{overall_total}**", inline=True)
+        embed.add_field(name="Formación", value=f"📋 **{formation}**", inline=True)
+        embed.add_field(name="Finanzas del Club", value=f"💰 **${money:,}**", inline=False)
         embed.set_image(url="attachment://pitch.png")
         
         await interaction.edit_original_response(content=content_msg, embed=embed, attachments=[file], view=self)
@@ -734,7 +731,7 @@ class TeamView(discord.ui.View):
                     p_group = get_pos_group(p.get("pos", "MC"))
                     if p_group == pos_group and added < count:
                         new_xi.append(p)
-                        used_ids.add(p["id"])
+                        used_ids.add(p["id"]) # Esto asegura que no ponga repetidos EN EL CAMPO aunque existan en el inventario.
                         added += 1
                     
         user_profile["starting_xi"] = new_xi
@@ -944,7 +941,11 @@ async def sell(interaction: discord.Interaction, nombre_jugador: str):
     target_player = matches[0]
     precio_venta = int(calculate_price(target_player["over"]) * 0.20) 
     
-    user_profile["inventory"].remove(target_player)
+    # remove() elimina LA PRIMERA COINCIDENCIA que encuentra. ¡Perfecto para vender 1 solo de los repetidos!
+    user_profile["inventory"].remove(target_player) 
+    
+    # Si ese jugador que acabamos de vender formaba parte del once titular (y no queda otro de reemplazo en la misma instancia), lo sacamos.
+    # En este caso, por precaución extraemos a ese ID de la alineación titular. Si tiene otro repetido, el usuario lo volverá a meter.
     user_profile["starting_xi"] = [p for p in user_profile["starting_xi"] if p["id"] != target_player["id"]]
     user_profile["money"] += precio_venta
     
@@ -971,8 +972,8 @@ async def claim(interaction: discord.Interaction):
     if not players_data:
         return await interaction.followup.send("❌ No hay jugadores registrados en el sistema global.")
         
-    # CORRECCIÓN DE EXPLOIT: Todos los jugadores están en la pool de sorteo.
-    # Así se evita forzar las últimas y más raras cartas del juego.
+    # LA SOLUCIÓN DEL EXPLOIT 254/255 ESTÁ AQUÍ. 
+    # Tira de todos los jugadores SIEMPRE, para que las probabilidades y los mejores no salgan gratis al final.
     available_players = [row["data"] for row in players_data]
     
     pesos = []
@@ -989,9 +990,9 @@ async def claim(interaction: discord.Interaction):
     precio = calculate_price(obtenido["over"])
     
     embed = discord.Embed(title="🎉 ¡Búsqueda de Talentos!", description=f"Has encontrado a **{obtenido['name']}**.", color=discord.Color.purple())
-    embed.add_field(name="Posición", value=obtenido["pos"])
-    embed.add_field(name="Overall", value=f"⭐ {obtenido['over']}")
-    embed.add_field(name="Valor Estimado", value=f"💰 ${precio:,}")
+    embed.add_field(name="Posición", value=f"⚽ {obtenido['pos']}", inline=True)
+    embed.add_field(name="Overall", value=f"⭐ {obtenido['over']}", inline=True)
+    embed.add_field(name="Valor Estimado", value=f"💰 ${precio:,}", inline=False)
     if obtenido.get("card"): embed.set_image(url=obtenido["card"])
     
     view = ClaimView(interaction.user, obtenido, precio)
@@ -1044,9 +1045,9 @@ async def team(interaction: discord.Interaction):
     file = discord.File(image_buffer, filename="pitch.png")
     
     embed = discord.Embed(title=f"🏟️ Prancheta Tática: {profile['club_name']}", color=discord.Color.dark_green())
-    embed.add_field(name="Rating del Equipo (SOMA)", value=f"⭐ {overall_total}", inline=True)
-    embed.add_field(name="Formación", value=formation, inline=True)
-    embed.add_field(name="Dinero del Club", value=f"💰 ${money:,}", inline=False)
+    embed.add_field(name="Rating del Equipo", value=f"⭐ **{overall_total}**", inline=True)
+    embed.add_field(name="Formación", value=f"📋 **{formation}**", inline=True)
+    embed.add_field(name="Finanzas del Club", value=f"💰 **${money:,}**", inline=False)
     embed.set_image(url="attachment://pitch.png")
     
     view = TeamView(interaction.user)
@@ -1083,6 +1084,8 @@ async def addplayerinicial(interaction: discord.Interaction, nombre: str):
     if not matches:
         return await interaction.response.send_message("❌ No tienes ese jugador.", ephemeral=True)
     target = matches[0]
+    
+    # LA VALIDACIÓN EXISTE: NO LOS DEJA METER A DOS VECES EL MISMO JUGADOR AUNQUE TENGAN REPETIDOS.
     if any(p["id"] == target["id"] for p in profile.get("starting_xi", [])):
         return await interaction.response.send_message("❌ Ya está en el 11 titular.", ephemeral=True)
     
@@ -1315,7 +1318,7 @@ async def ia_match(interaction: discord.Interaction):
         narrativas = {
             "gol": [
                 "⚽ ¡GOOOOOOOLAZO! {atk} fusiló al portero {gk} tras una asistencia de {ast}.",
-                "⚽ ¡GOL GOL GOL GOL! {atk} dejó a {defensor} en el suelo y la mandó a guardar.",
+                "⚽ ¡GOL GOL GOL GOL! {atk} deixou {defensor} no chão e mandou pra rede.",
                 "⚽ ¡QUÉ DEFINICIÓN! {atk} pica el balón sobre {gk} con una clase magistral."
             ],
             "defesa": [
@@ -1422,6 +1425,9 @@ async def ranking(interaction: discord.Interaction):
 @app_commands.checks.has_permissions(administrator=True)
 @is_in_admin_guild()
 async def resetglobal(interaction: discord.Interaction):
+    if interaction.user.id not in ALLOWED_RESET_USERS:
+        return await interaction.response.send_message("❌ **Acesso Negado:** Apenas os donos absolutos do bot podem usar este comando incrivelmente destrutivo.", ephemeral=True)
+        
     await interaction.response.defer(ephemeral=True)
     try:
         supabase.table("jogadores").delete().neq("id", "0").execute()
@@ -1619,9 +1625,7 @@ async def giveplayer(interaction: discord.Interaction, usuario: discord.Member, 
     target_player = matches[0]
     profile = await get_user_profile(usuario)
     
-    if any(p["id"] == target_player["id"] for p in profile.get("inventory", [])):
-        return await interaction.followup.send(f"❌ El usuario {usuario.mention} ya tiene a **{target_player['name']}** en su club.")
-        
+    # Este comando lo usan los admins, así que aquí les quitamos el límite de repetidos. Pueden regalar el mismo a voluntad.
     profile["inventory"].append(target_player)
     await save_user_profile(usuario.id, profile)
     await interaction.followup.send(f"✅ Se ha añadido a **{target_player['name']}** al club de {usuario.mention}.")
@@ -1639,6 +1643,7 @@ async def takeplayer(interaction: discord.Interaction, usuario: discord.Member, 
         
     target_player = matches[0]
     
+    # Esto quita TODAS LAS COPIAS del jugador. Ideal para castigos admins.
     profile["inventory"] = [p for p in profile.get("inventory", []) if p["id"] != target_player["id"]]
     profile["starting_xi"] = [p for p in profile.get("starting_xi", []) if p["id"] != target_player["id"]]
     
