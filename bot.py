@@ -127,12 +127,14 @@ def get_renogare_font_cached(size):
 
 def draw_base_field():
     width, height = IMAGE_WIDTH, IMAGE_HEIGHT
-    field_img = Image.new("RGB", (width, height), color="#1A1A1A")
+    # CAMBIO: Colores de césped más realistas
+    field_img = Image.new("RGB", (width, height), color="#2b5e2b")
     draw = ImageDraw.Draw(field_img, "RGBA")
 
+    # Patrón de rayas en el césped
     for i in range(0, height, 85):
         if (i // 85) % 2 == 0: 
-            draw.rectangle([0, i, width, i+85], fill="#2A2A2A")
+            draw.rectangle([0, i, width, i+85], fill="#336e33")
 
     line_color = (255, 255, 255, 180)
     lw = 12 
@@ -205,6 +207,8 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
 
         if p_img:
             img_w, img_h = p_img.size
+            # Sombra para dar profundidad a las cartas
+            draw.rectangle([cx - img_w//2 + 5, cy - img_h//2 + 5, cx + img_w//2 + 5, cy + img_h//2 + 5], fill=(0, 0, 0, 100))
             temp_img.paste(p_img, (int(cx - img_w//2), int(cy - img_h//2)), p_img)
         else:
             x1, y1 = int(cx - CARD_W//2), int(cy - CARD_H//2)
@@ -481,15 +485,26 @@ class TiendaView(discord.ui.View):
                 chosen_rarity = random.choices(rarities, weights=weights, k=1)[0]
 
             player = get_player_by_rarity(chosen_rarity, self.all_players)
-            drawn_players.append((chosen_rarity, player))
-            profile["inventory"].append(player)
+            
+            # CONTROL DE DUPLICADOS PARA ECONOMIA JUSTA
+            if any(inv_p["id"] == player["id"] for inv_p in profile["inventory"]):
+                comp = int(calculate_price(player["over"]) * 0.20)
+                profile["money"] += comp
+                drawn_players.append((chosen_rarity, player, comp))
+            else:
+                profile["inventory"].append(player)
+                drawn_players.append((chosen_rarity, player, 0))
 
         await save_user_profile(self.user.id, profile)
 
         embed = discord.Embed(title=f"📦 ¡Paquete {pack_name} Abierto!", color=discord.Color.gold())
         desc = ""
-        for rarity, p in drawn_players:
-            desc += f"**{rarity}** | ⭐ {p['over']} - {p['pos']} | **{p['name']}**\n"
+        for rarity, p, comp in drawn_players:
+            if comp > 0:
+                desc += f"**{rarity}** | ⭐ {p['over']} - {p['pos']} | **{p['name']}** *(Duplicado: +${comp:,})*\n"
+            else:
+                desc += f"**{rarity}** | ⭐ {p['over']} - {p['pos']} | **{p['name']}**\n"
+                
         embed.description = desc
         embed.set_footer(text=f"Monedas Premium restantes: 💎 {profile['premium_coins']}")
 
@@ -530,17 +545,19 @@ class ClaimView(discord.ui.View):
             self.processed = True
             profile = await get_user_profile(self.user)
             
+            # CONTROL DE DUPLICADOS EN TIMEOUT
             if any(p["id"] == self.player["id"] for p in profile["inventory"]):
+                profile["money"] += self.precio_venta
+                await save_user_profile(self.user.id, profile)
                 embed = self.message.embeds[0]
-                embed.color = discord.Color.red()
-                embed.title = "❌ Ya posees a este jugador"
-                embed.description = "El jugador ya estaba en tu inventario."
+                embed.color = discord.Color.gold()
+                embed.title = "🔁 Auto-Venta de Duplicado"
+                embed.description = f"El tiempo se agotó. Ya tenías a este jugador, así que fue vendido automáticamente por **${self.precio_venta:,}**."
                 self.disable_all()
-                await self.message.edit(content="⏱️ Tiempo agotado. Se convirtió en fondos de entrenamiento.", embed=embed, view=self)
+                await self.message.edit(content="⏱️ Tiempo agotado.", embed=embed, view=self)
             else:
                 profile["inventory"].append(self.player)
                 await save_user_profile(self.user.id, profile)
-                
                 embed = self.message.embeds[0]
                 embed.color = discord.Color.green()
                 embed.title = f"🎉 ¡{self.player['name']} Añadido al Club!"
@@ -554,11 +571,14 @@ class ClaimView(discord.ui.View):
         self.processed = True
         
         profile = await get_user_profile(self.user)
+        # CONTROL DE DUPLICADOS AL ACEPTAR
         if any(p["id"] == self.player["id"] for p in profile["inventory"]):
+            profile["money"] += self.precio_venta
+            await save_user_profile(self.user.id, profile)
             embed = interaction.message.embeds[0]
-            embed.color = discord.Color.red()
-            embed.title = "❌ Ya posees a este jugador"
-            embed.description = "El jugador ya estaba en tu inventario."
+            embed.color = discord.Color.gold()
+            embed.title = "🔁 Jugador Duplicado"
+            embed.description = f"Ya tenías a este jugador en tu club. Ha sido vendido automáticamente por **${self.precio_venta:,}**."
             self.disable_all()
             await interaction.response.edit_message(embed=embed, view=self)
         else:
@@ -793,7 +813,7 @@ async def help_cmd(interaction: discord.Interaction):
     """
     embed.add_field(name="⚽ Gestión y Partidos", value=equipo_cmds, inline=False)
     
-    admin_cmds = "`/addplayer`, `/editplayer`, `/delplayer`, `/bulkadd`, `/addmoney`, `/removemoney`, `/giveplayer`, `/takeplayer`, `/lock`, `/unlock`"
+    admin_cmds = "`/addplayer`, `/editplayer`, `/delplayer`, `/bulkadd`, `/addmoney`, `/removemoney`, `/giveplayer`, `/takeplayer`, `/lock`, `/unlock`, `/resetglobal`"
     embed.add_field(name="⚙️ Comandos de Admin", value=admin_cmds, inline=False)
     
     embed.set_footer(text="SSA Guru - Street Soccer All One", icon_url=interaction.user.display_avatar.url)
@@ -951,12 +971,10 @@ async def claim(interaction: discord.Interaction):
     if not players_data:
         return await interaction.followup.send("❌ No hay jugadores registrados en el sistema global.")
         
-    user_inv_ids = {p["id"] for p in profile.get("inventory", [])}
-    available_players = [row["data"] for row in players_data if row["data"]["id"] not in user_inv_ids]
+    # CORRECCIÓN DE EXPLOIT: Todos los jugadores están en la pool de sorteo.
+    # Así se evita forzar las últimas y más raras cartas del juego.
+    available_players = [row["data"] for row in players_data]
     
-    if not available_players:
-        return await interaction.followup.send("🎉 **¡Increíble!** Ya tienes absolutamente TODAS las cartas del mercado. ¡Eres una leyenda!")
-        
     pesos = []
     for p in available_players:
         over = p.get("over", 50)
@@ -1160,7 +1178,8 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
             return 
             
         message = await interaction.original_response()
-        embed_jogo = discord.Embed(title="🎙️ TRANSMISIÓN EN VIVO - SSA TV", description="```\nEl balón está a punto de rodar...\n```", color=discord.Color.green())
+        embed_jogo = discord.Embed(title="🎙️ TRANSMISIÓN EN VIVO - SSA TV", description="```\nEl balón está a punto de rodar...\n
+```", color=discord.Color.green())
         await message.edit(content=f"🏟️ **¡La afición en la SSA Arena enloquece! ¡El árbitro pita el inicio!**", embed=embed_jogo, view=None)
         
         p1_goles = 0
@@ -1230,7 +1249,8 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
             
         await asyncio.sleep(2)
         final_embed = discord.Embed(title="🏁 ¡FINAL DEL PARTIDO EN LA SSA ARENA!", color=discord.Color.dark_gold())
-        final_embed.description = f"```\n{chr(10).join(historial_eventos)}\n```" 
+        final_embed.description = f"```\n{chr(10).join(historial_eventos)}\n
+```" 
         resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_profile['club_name']}**"
         final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
         
@@ -1339,7 +1359,8 @@ async def ia_match(interaction: discord.Interaction):
             historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
             texto_log = "\n\n".join(historial_eventos[-8:]) 
             
-            embed_jogo.description = f"```\n{texto_log}\n```"
+            embed_jogo.description = f"```\n{texto_log}\n
+```"
             embed_jogo.clear_fields()
             
             embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
@@ -1397,6 +1418,18 @@ async def ranking(interaction: discord.Interaction):
 # ==========================================
 # 3. COMANDOS ADMINISTRATIVOS
 # ==========================================
+@bot.tree.command(name="resetglobal", description="Admin: BORRA TODO. Jugadores, usuarios, dinero. (Reset de Fábrica)")
+@app_commands.checks.has_permissions(administrator=True)
+@is_in_admin_guild()
+async def resetglobal(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        supabase.table("jogadores").delete().neq("id", "0").execute()
+        PLAYER_CARD_CACHE.clear()
+        await interaction.followup.send("🚨 **FACTORY RESET COMPLETADO**. Toda la base de datos (usuarios, inventarios, dinero y jugadores globales) ha sido borrada permanentemente. El bot vuelve al estado de fábrica.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error al resetear la base de datos: {e}")
+
 @bot.tree.command(name="bulkadd", description="Admin: Añade múltiples jugadores subiendo un archivo .txt.")
 @app_commands.describe(archivo="Archivo .txt con formato: Nick OVR POS LINK (uno por línea)")
 @app_commands.checks.has_permissions(administrator=True)
@@ -1657,7 +1690,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 if __name__ == "__main__":
     if not os.path.exists("renogare.otf"):
         print("⚠️ ARCHIVO 'renogare.otf' NO ENCONTRADO.")
-        print("Asegúrate de colocar 'renogare.otf' en la mesma pasta que este script.")
+        print("Asegúrate de colocar 'renogare.otf' en la misma carpeta que este script.")
         print("El bot usará la fuente por defecto para las imágenes generadas.")
         
     bot.run(DISCORD_TOKEN)
