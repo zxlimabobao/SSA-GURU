@@ -136,7 +136,6 @@ def draw_base_field():
     field_img = Image.new("RGB", (width, height), color="#2b5e2b")
     draw = ImageDraw.Draw(field_img, "RGBA")
 
-    # Patrón de rayas en el césped
     for i in range(0, height, 85):
         if (i // 85) % 2 == 0: 
             draw.rectangle([0, i, width, i+85], fill="#336e33")
@@ -144,44 +143,34 @@ def draw_base_field():
     line_color = (255, 255, 255, 180)
     lw = 12 
     
-    # Bordes exteriores
     draw.rectangle([40, 40, width-40, height-40], outline=line_color, width=lw)
-    # Línea central
     draw.line([40, height//2, width-40, height//2], fill=line_color, width=lw)
-    # Círculo central
     draw.ellipse(
         [width//2 - 180, height//2 - 180, width//2 + 180, height//2 + 180],
         outline=line_color, width=lw
     )
-    # Punto central
     draw.ellipse(
         [width//2 - 12, height//2 - 12, width//2 + 12, height//2 + 12],
         fill=line_color
     )
     
-    # Áreas grandes
     draw.rectangle([320, 40, width-320, 350], outline=line_color, width=lw)
     draw.rectangle([320, height-350, width-320, height-40], outline=line_color, width=lw)
     
-    # Áreas chicas (Caja de gol)
     draw.rectangle([480, 40, width-480, 140], outline=line_color, width=lw)
     draw.rectangle([480, height-140, width-480, height-40], outline=line_color, width=lw)
 
-    # Medialunas (Arcos de penal)
     draw.arc([width//2 - 130, 220, width//2 + 130, 480], start=0, end=180, fill=line_color, width=lw)
     draw.arc([width//2 - 130, height-480, width//2 + 130, height-220], start=180, end=360, fill=line_color, width=lw)
     
-    # Puntos de penal
     draw.ellipse([width//2 - 8, 260, width//2 + 8, 276], fill=line_color)
     draw.ellipse([width//2 - 8, height-276, width//2 + 8, height-260], fill=line_color)
 
-    # Arcos de tiro de esquina
     draw.arc([-20, -20, 100, 100], start=0, end=90, fill=line_color, width=lw)
     draw.arc([width-100, -20, width+20, 100], start=90, end=180, fill=line_color, width=lw)
     draw.arc([-20, height-100, 100, height+20], start=270, end=360, fill=line_color, width=lw)
     draw.arc([width-100, height-100, width+20, height+20], start=180, end=270, fill=line_color, width=lw)
 
-    # Sombras decorativas top y bottom
     draw.rectangle([0, 0, width, 150], fill=(0, 0, 0, 100))
     draw.rectangle([0, height-120, width, height], fill=(0, 0, 0, 100))
     return field_img
@@ -245,7 +234,6 @@ def compile_team_image_sync(filled_slots, club_name, club_sigla, money, overall_
 
         if p_img:
             img_w, img_h = p_img.size
-            # Sombra para dar profundidad a las cartas
             draw.rectangle(
                 [cx - img_w//2 + 8, cy - img_h//2 + 8, cx + img_w//2 + 8, cy + img_h//2 + 8],
                 fill=(0, 0, 0, 120)
@@ -350,7 +338,6 @@ async def get_user_profile(user: discord.abc.User):
         await db_upsert(doc_id, default_data)
         return default_data
     else:
-        # Patch data
         needs_update = False
         if "premium_coins" not in user_data["data"]:
             user_data["data"]["premium_coins"] = 0
@@ -499,7 +486,7 @@ class BuyView(discord.ui.View):
             )
             
         user_profile["money"] -= precio
-        user_profile["inventory"].append(player) # AHORA PERMITE REPETIDOS
+        user_profile["inventory"].append(player)
         await save_user_profile(interaction.user.id, user_profile)
         
         self.children[1].disabled = True
@@ -554,7 +541,7 @@ class TiendaView(discord.ui.View):
                 chosen_rarity = random.choices(rarities, weights=weights, k=1)[0]
 
             player = get_player_by_rarity(chosen_rarity, self.all_players)
-            profile["inventory"].append(player) # PERMITE REPETIDOS PARA EVITAR EXPLOITS
+            profile["inventory"].append(player)
             drawn_players.append((chosen_rarity, player))
 
         await save_user_profile(self.user.id, profile)
@@ -604,7 +591,7 @@ class ClaimView(discord.ui.View):
         if not self.processed and self.message:
             self.processed = True
             profile = await get_user_profile(self.user)
-            profile["inventory"].append(self.player) # PERMITE REPETIDOS
+            profile["inventory"].append(self.player)
             await save_user_profile(self.user.id, profile)
             
             embed = self.message.embeds[0]
@@ -620,7 +607,7 @@ class ClaimView(discord.ui.View):
         self.processed = True
         
         profile = await get_user_profile(self.user)
-        profile["inventory"].append(self.player) # PERMITE REPETIDOS
+        profile["inventory"].append(self.player)
         await save_user_profile(self.user.id, profile)
         
         embed = interaction.message.embeds[0]
@@ -1339,7 +1326,7 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
         
         embed_jogo = discord.Embed(
             title="🎙️ TRANSMISIÓN EN VIVO - SSA TV",
-            description="```text\nEl balón está a punto de rodar...\n
+            description=f"```text{chr(10)}El balón está a punto de rodar...{chr(10)}
 ```",
             color=discord.Color.green()
         )
@@ -1410,9 +1397,9 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
                 )
                 
             historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
-            texto_log = "\n\n".join(historial_eventos[-8:]) 
+            texto_log = chr(10).join(historial_eventos[-8:]) 
             
-            embed_jogo.description = f"```text\n{texto_log}\n```"
+            embed_jogo.description = f"```text{chr(10)}{texto_log}{chr(10)}```"
             embed_jogo.clear_fields()
             
             embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
@@ -1429,7 +1416,7 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
         )
         
         final_log = chr(10).join(historial_eventos)
-        final_embed.description = f"```text\n{final_log}\n
+        final_embed.description = f"```text{chr(10)}{final_log}{chr(10)}
 ```" 
         
         resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_profile['club_name']}**"
@@ -1493,7 +1480,7 @@ async def ia_match(interaction: discord.Interaction):
         
         embed_jogo = discord.Embed(
             title="🎙️ TRANSMISIÓN EN VIVO - SSA TV",
-            description="```text\nEl balón está a punto de rodar contra la Máquina...\n```",
+            description=f"```text{chr(10)}El balón está a punto de rodar contra la Máquina...{chr(10)}```",
             color=discord.Color.blurple()
         )
         await message.edit(
@@ -1557,9 +1544,9 @@ async def ia_match(interaction: discord.Interaction):
                 )
                 
             historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
-            texto_log = "\n\n".join(historial_eventos[-8:]) 
+            texto_log = chr(10).join(historial_eventos[-8:]) 
             
-            embed_jogo.description = f"```text\n{texto_log}\n
+            embed_jogo.description = f"```text{chr(10)}{texto_log}{chr(10)}
 ```"
             embed_jogo.clear_fields()
             
@@ -1577,7 +1564,7 @@ async def ia_match(interaction: discord.Interaction):
         )
         
         final_log = chr(10).join(historial_eventos)
-        final_embed.description = f"```text\n{final_log}\n```" 
+        final_embed.description = f"```text{chr(10)}{final_log}{chr(10)}```" 
         
         resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_club_name}**"
         final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
