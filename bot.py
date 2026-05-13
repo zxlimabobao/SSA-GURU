@@ -673,7 +673,7 @@ class FormationSelect(discord.ui.Select):
         
         await self.view.refresh_board(
             interaction, 
-            "✅ Formación cambiada a **{self.values[0]}**. O time foi esvaziado para evitar erros, use 'Auto Escalar'."
+            f"✅ Formación cambiada a **{self.values[0]}**. El equipo fue vaciado para evitar errores, usa 'Auto Escalar'."
         )
 
 # --- SISTEMA DE SELEÇÃO DE CAPITÃO ---
@@ -1323,11 +1323,11 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
             return 
             
         message = await interaction.original_response()
-        
+
+        # FIX: f-string corrigida - sem quebra de linha dentro da string
         embed_jogo = discord.Embed(
             title="🎙️ TRANSMISIÓN EN VIVO - SSA TV",
-            description=f"```text{chr(10)}El balón está a punto de rodar...{chr(10)}
-```",
+            description="```text\nEl balón está a punto de rodar...\n```",
             color=discord.Color.green()
         )
         
@@ -1397,9 +1397,10 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
                 )
                 
             historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
-            texto_log = chr(10).join(historial_eventos[-8:]) 
-            
-            embed_jogo.description = f"```text{chr(10)}{texto_log}{chr(10)}```"
+            texto_log = "\n".join(historial_eventos[-8:])
+
+            # FIX: f-string corrigida - sem quebra de linha dentro da string
+            embed_jogo.description = f"```text\n{texto_log}\n```"
             embed_jogo.clear_fields()
             
             embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
@@ -1415,9 +1416,9 @@ async def matching(interaction: discord.Interaction, rival: discord.Member):
             color=discord.Color.dark_gold()
         )
         
-        final_log = chr(10).join(historial_eventos)
-        final_embed.description = f"```text{chr(10)}{final_log}{chr(10)}
-```" 
+        final_log = "\n".join(historial_eventos)
+        # FIX: f-string corrigida - sem quebra de linha dentro da string
+        final_embed.description = f"```text\n{final_log}\n```"
         
         resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_profile['club_name']}**"
         final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
@@ -1477,10 +1478,11 @@ async def ia_match(interaction: discord.Interaction):
         
         await interaction.response.send_message("⚙️ **Configurando partido contra la IA...**")
         message = await interaction.original_response()
-        
+
+        # FIX: f-string corrigida - sem quebra de linha dentro da string
         embed_jogo = discord.Embed(
             title="🎙️ TRANSMISIÓN EN VIVO - SSA TV",
-            description=f"```text{chr(10)}El balón está a punto de rodar contra la Máquina...{chr(10)}```",
+            description="```text\nEl balón está a punto de rodar contra la Máquina...\n```",
             color=discord.Color.blurple()
         )
         await message.edit(
@@ -1544,10 +1546,10 @@ async def ia_match(interaction: discord.Interaction):
                 )
                 
             historial_eventos.append(f"[{minuto_actual:02d}'] {lance}")
-            texto_log = chr(10).join(historial_eventos[-8:]) 
-            
-            embed_jogo.description = f"```text{chr(10)}{texto_log}{chr(10)}
-```"
+            texto_log = "\n".join(historial_eventos[-8:])
+
+            # FIX: f-string corrigida - sem quebra de linha dentro da string
+            embed_jogo.description = f"```text\n{texto_log}\n```"
             embed_jogo.clear_fields()
             
             embed_jogo.add_field(name=f"🏠 {p1_profile['club_name']}", value=f"> **{p1_goles}**", inline=True)
@@ -1563,8 +1565,9 @@ async def ia_match(interaction: discord.Interaction):
             color=discord.Color.dark_gold()
         )
         
-        final_log = chr(10).join(historial_eventos)
-        final_embed.description = f"```text{chr(10)}{final_log}{chr(10)}```" 
+        final_log = "\n".join(historial_eventos)
+        # FIX: string normal - sem interpolação desnecessária
+        final_embed.description = f"```text\n{final_log}\n```"
         
         resultado = f"**{p1_profile['club_name']}** `{p1_goles}` - `{p2_goles}` **{p2_club_name}**"
         final_embed.add_field(name="MARCADOR FINAL", value=resultado, inline=False)
